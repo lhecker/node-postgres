@@ -1,0 +1,20 @@
+{
+	"name": "node-postgres",
+	"version": "0.0.1",
+	"description": "A modern and fast PostgreSQL client in pure JavaScript",
+	"main": "index.js",
+	"keywords": [
+		"postgresql",
+		"postgre",
+		"postgres",
+		"pg",
+		"database",
+		"rdbms"
+	],
+	"author": "Leonard Hecker <leonard@hecker.io>",
+	"license": "MIT",
+	"dependencies": {
+		"bluebird": "^2.10.0",
+		"double-ended-queue": "^0.9.7"
+	}
+}
