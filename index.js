@@ -2,8 +2,14 @@
 
 const Connection = require('./lib/Connection');
 
-const conn = new Connection({
-	username: 'postgres',
+var Promise = require('bluebird');
+
+
+Promise.using(Connection.connect({
+	user    : 'postgres',
 	password: 'qyce-zhju',
 	database: 'eucstats',
+}), (conn) => {
+	return conn.query('SELECT now()')
+		.then(console.log.bind(console));
 });
