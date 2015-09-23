@@ -11,6 +11,10 @@
 		"database",
 		"rdbms"
 	],
+	"repository" : {
+		"type" : "git",
+		"url" : "https://git.hecker.io/lhecker/node-postgres.git"
+	},
 	"author": "Leonard Hecker <leonard@hecker.io>",
 	"license": "MIT",
 	"dependencies": {
