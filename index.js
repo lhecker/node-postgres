@@ -6,6 +6,7 @@ const pg = require('pg');
 var Promise = require('bluebird');
 
 
+
 console.time('pg');
 
 pg.connect('postgres://postgres:qyce-zhju@localhost/eucstats', function (err, conn, done) {
@@ -23,9 +24,12 @@ setTimeout(() => {
 		password: 'qyce-zhju',
 		database: 'eucstats',
 	}), (conn) => {
-		return conn.queryMulti("SELECT * FROM test")
-			//.then(results => console.log(require('util').inspect(results, {depth:null, colors:true})));
-			.then((results) => console.timeEnd('postgres'));
+		return conn.query({
+				name: 'test',
+				text: "SELECT * FROM test",
+			})
+			//.then((results) => console.log(require('util').inspect(results, {depth:null, colors:true})))
+			.then((results) => console.timeEnd('postgres'))
 	});
 }, 30000);
 
