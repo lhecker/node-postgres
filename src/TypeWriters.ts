@@ -1,7 +1,7 @@
 import MessageWriter from './MessageWriter';
 
 function TypeWriter$default$universal(writer: MessageWriter, value: any) {
-    writer.putString(String(value));
+    writer.putBytes(Buffer.isBuffer(value) ? value : String(value));
 }
 
 type TypeWriter = (writer: MessageWriter, value: any) => void;

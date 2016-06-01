@@ -65,22 +65,24 @@ class MessageReader {
         return this._buf.slice(this._beg, this._end);
     }
 
-    toString(type?: string): string {
-        return this._buf.toString(type || 'utf8', this._beg, this._end);
-    }
-
-    advance(n: number) {
+    advance(n: number): MessageReader {
         this._off += n;
 
         if (this._off > this._end) {
             throw new RangeError('index out of range');
         }
+
+        return this;
     }
 
     getReader(n: number): MessageReader {
         const offset = this.offset;
         this.advance(n);
         return new MessageReader(this, offset, offset + n);
+    }
+
+    getString(type?: string): string {
+        return this._buf.toString(type || 'utf8', this._off, this._end);
     }
 
     getRemaining(): Buffer {

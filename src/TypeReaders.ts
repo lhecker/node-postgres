@@ -11,7 +11,7 @@ function TypeReader$bool$binary(reader: MessageReader): boolean {
 
 function TypeReader$bytea$text(reader: MessageReader): Buffer {
     // The text representation of bytea starts with \x ---> slice it out
-    return new Buffer(reader.toString('ascii').slice(2), 'hex');
+    return new Buffer(reader.advance(2).getString('ascii'), 'hex');
 }
 
 function TypeReader$bytea$binary(reader: MessageReader): Buffer {
@@ -19,11 +19,11 @@ function TypeReader$bytea$binary(reader: MessageReader): Buffer {
 }
 
 function TypeReader$text$universal(reader: MessageReader): string {
-    return reader.toString('utf8');
+    return reader.getString('utf8');
 }
 
 function TypeReader$number$text(reader: MessageReader): number {
-    return Number(reader.toString('ascii')); // TODO: int8 support
+    return Number(reader.getString('ascii')); // TODO: int8 support
 }
 
 function TypeReader$int2$binary(reader: MessageReader): number {
@@ -48,7 +48,7 @@ function TypeReader$float8$binary(reader: MessageReader): number {
 
 function TypeReader$timestamp$text(reader: MessageReader): Date {
     // postgres formats timestamp as '2015-09-24 19:03:07.626'
-    return new Date(reader.toString('ascii'));
+    return new Date(reader.getString('ascii'));
 }
 
 function TypeReader$timestamp$binary(reader: MessageReader): Date {
@@ -65,7 +65,7 @@ function TypeReader$timestamp$binary(reader: MessageReader): Date {
 function TypeReader$timestamptz$text(reader: MessageReader): Date {
     // postgres formats timestamptz as '2015-09-24 19:03:07.626+02'
     // ---> v8 interprets '+02' as +2 minutes instead of hours
-    return new Date(reader.toString('ascii') + ':00');
+    return new Date(reader.getString('ascii') + ':00');
 }
 
 type TypeReader = (reader: MessageReader) => any;

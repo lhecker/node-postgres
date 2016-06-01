@@ -30,7 +30,7 @@ export interface QueryOptions {
 /*
  * TODO:
  *   Reject all DeferredPacket instances if _error() is called.
- *   Make it impossible to add more packets etc. Pairs with the following TODO:
+ *   Make it impossible to add more packets etc.
  *
  * TODO:
  *   Add connection state logic.
@@ -42,80 +42,88 @@ export interface QueryOptions {
  *  since they basically act as an extension to it.
  */
 class Connection extends EventEmitter {
-    static connect(options: Options) {
+    static connect(options: Options): Bluebird.Disposer<Connection> {
         let conn: Connection;
 
-        const p =
-            new Bluebird((resolve, reject) => {
-                conn = new Connection(options);
+        return new Bluebird<Connection>((resolve, reject) => {
+            conn = new Connection(options);
 
-                function onError(err: any) {
-                    conn.removeListener('connect', onConnected);
-                    reject(err);
-                }
+            function removeListener() {
+                conn.removeListener('connect', onConnected);
+                conn.removeListener('error', onError);
+            }
 
-                function onConnected() {
-                    conn.removeListener('error', onError);
-                    resolve(conn);
-                }
+            function onError(err: any) {
+                removeListener();
+                reject(err);
+            }
 
-                conn.once('error', onError);
-                conn.once('connect', onConnected);
-            })
-                .disposer(() => {
-                    if (conn) {
-                        conn.end();
-                    }
-                });
+            function onConnected() {
+                removeListener();
+                resolve(conn);
+            }
 
-        return p;
+            conn.on('error', onError);
+            conn.on('connect', onConnected);
+        }).disposer(() => {
+            if (conn) {
+                conn.end();
+            }
+        });
     }
 
     options: ConnectionConfig;
-    _terminated: boolean;
+
     _authenticated: boolean;
-    _serverParameters: {};
-    _serverProcessId: number;
-    _serverSecretKey: number;
-    _transactionState: number;
-    _queue: Deque<Message>;
-    _aggregator: BufferAggregator;
-    _needsHeader: boolean;
     _currentParser: Parser;
     _currentParserLength: number;
+    _needsHeader: boolean;
+    _terminated: boolean;
+    _transactionState: number;
+
+    _serverParameters: { [key: string]: string };
+    _serverProcessId: number;
+    _serverSecretKey: number;
+
+    _aggregator: BufferAggregator;
+    _queue: Deque<Message>;
+
+    _connectTimeout: NodeJS.Timer;
     _socket: net.Socket;
 
     constructor(options: Options) {
         super();
 
-        // parameter members
+        // Public members
         this.options = Object.freeze(new ConnectionConfig(options));
 
-        // postgres frontend state members
-        this._terminated = false;
+        // Connection state
         this._authenticated = false;
+        this._currentParser = parsers.Header;
+        this._currentParserLength = HEADER_SIZE;
+        this._needsHeader = true;
+        this._terminated = false;
+        this._transactionState = TransactionState.IDLE;
+
+        // Connection information
         this._serverParameters = {};
         this._serverProcessId = undefined;
         this._serverSecretKey = undefined;
-        this._transactionState = TransactionState.IDLE;
 
-        // API state members
+        // Messaging queues
+        this._aggregator = new BufferAggregator();
         this._queue = new Deque<Message>();
 
-        // parser state members
-        this._aggregator = new BufferAggregator();
-        this._needsHeader = true;
-        this._currentParser = parsers.Header;
-        this._currentParserLength = HEADER_SIZE;
-
-        // TCP client members
+        // Networking members
         this._socket = net.connect(this.options as any);
         this._socket.on('data', this._recv.bind(this));
         this._socket.once('error', this._error.bind(this));
 
-        setTimeout(this.emit.bind('error', new Error('timeout')), this.options.connectTimeout);
+        this._connectTimeout = setTimeout(() => {
+            this.emit('error', new Error('timeout'));
+        }, this.options.connectTimeout);
 
-        // initiate the connection by sending the startup message
+        // Initiate the connection by sending the startup message
         const msg = new Message();
         msg.addStartupMessage(this.options);
         this._writeMessage(msg).promise
@@ -200,7 +208,7 @@ class Connection extends EventEmitter {
     }
 
     queryText(text: string): Bluebird<any> {
-        debug.enabled && debug(`Connection..queryMulti(${text})`);
+        debug.enabled && debug(`Connection..queryText(${text})`);
 
         const msg = new Query();
         msg.addQuery(text);

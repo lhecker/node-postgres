@@ -8,11 +8,12 @@ import debug from '../debug';
 export const type = 'T';
 export default function Parser$RowDescription(conn: Connection, reader: MessageReader) {
     const fieldCount = reader.getInt16();
-    const fields: Field[] = [];
+    const fields: Field[] = new Array(fieldCount);
 
     debug.enabled && debug('---', `Parser$RowDescription fieldCount=${fieldCount}`);
 
     for (let i = 0; i < fieldCount; i++) {
+        // NOTE: The order of the keys below is obviously important
         const field = {
             name: reader.getCString(),
             objectId: reader.getInt32(),

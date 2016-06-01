@@ -12,7 +12,7 @@ function noop(val: any) {
 class Message extends MessageWriter {
     private _promise: Bluebird<any>;
     private _resolve: (val: any) => void;
-    private _reject: (err: Error) => void;
+    private _reject: (err: any) => void;
 
     constructor() {
         super();
@@ -24,7 +24,7 @@ class Message extends MessageWriter {
 
     get promise() {
         if (!this._promise) {
-            this._promise = new Bluebird((resolve, reject) => {
+            this._promise = new Bluebird<any>((resolve, reject) => {
                 this._resolve = resolve;
                 this._reject = reject;
             });
@@ -65,6 +65,5 @@ interface Message {
 Object.keys(packets).forEach((name) => {
     Message.prototype['add' + name] = packets[name];
 });
-
 
 export default Message;

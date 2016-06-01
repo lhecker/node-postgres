@@ -3,9 +3,6 @@ import Connection from '../Connection';
 import MessageReader from '../MessageReader';
 
 export interface Parser {
-    id: number;
-    type: string;
-
     (conn: Connection, reader: MessageReader): void;
 }
 
@@ -43,24 +40,23 @@ export default (() => {
     const parsers = {
         uint8,
     };
-    let id = 1;
 
     for (let basename of fs.readdirSync(__dirname)) {
         if (basename.slice(-3) !== '.js' || basename === 'index.js') {
             continue;
         }
 
-        const parser: Parser = require('./' + basename);
         const name = basename.slice(0, -3);
-        const type = parser.type.charCodeAt(0);
+        const module = require('./' + basename);
+        const parser: Parser = module.default;
+        const type = module.type;
 
-        console.assert(id <= (1 << 30));
-        parser.id = id;
-
+        console.assert(typeof parser === 'function');
         parsers[name] = parser;
-        exports.uint8[type] = parser;
 
-        id <<= 1;
+        if (type) {
+            exports.uint8[type.charCodeAt(0)] = parser;
+        }
     }
 
     return parsers as Parsers;

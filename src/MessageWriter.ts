@@ -4,18 +4,6 @@ function checkInt(val: any, lo: number, hi: number) {
     }
 }
 
-function checkBuffer(val: any) {
-    if (Buffer.isBuffer(val)) {
-        throw new TypeError('value is not a Buffer');
-    }
-}
-
-function checkString(val: any) {
-    if (typeof val !== 'string') {
-        throw new TypeError('value is not a string');
-    }
-}
-
 
 const enum Type {
     UInt8,
@@ -30,35 +18,20 @@ type ChunkData = number | string | Buffer;
 type Chunk = [Type, number, ChunkData];
 
 export default class MessageWriter {
-    static createHeaderOnlyBuffer(type: string) {
-        return new Buffer([type.charCodeAt(0), 0x00, 0x00, 0x00, 0x04]);
-    }
-
     private _size: number;
     private _chunks: Chunk[];
     private _currentSize: number;
     private _currentSizeChunk: Chunk;
 
-    constructor() {
+    public static createHeaderOnlyBuffer(type: string) {
+        return new Buffer([type.charCodeAt(0), 0x00, 0x00, 0x00, 0x04]);
+    }
+
+    public constructor() {
         this._clear();
     }
 
-    private _clear() {
-        this._size = 0;
-        this._chunks = [];
-        this._currentSize = 0;
-        this._currentSizeChunk = null;
-    }
-
-    private _endPacket() {
-        if (this._currentSize > 0) {
-            this._currentSizeChunk[1] = this._currentSize;
-            this._size += this._currentSize;
-            this._currentSize = 0;
-        }
-    }
-
-    beginPacket(type?: string) {
+    public beginPacket(type?: string) {
         this._endPacket();
 
         if (type !== undefined) {
@@ -69,7 +42,7 @@ export default class MessageWriter {
         this._currentSizeChunk = this._chunks[this._chunks.length - 1];
     }
 
-    finish() {
+    public finish(): Buffer {
         this._endPacket();
 
         const buffer = new Buffer(this._size);
@@ -107,7 +80,7 @@ export default class MessageWriter {
         return buffer;
     }
 
-    putUInt8(data: number) {
+    public putUInt8(data: number) {
         checkInt(data, 0x00, 0xff);
 
         const length = 1;
@@ -115,7 +88,7 @@ export default class MessageWriter {
         this._currentSize += length;
     }
 
-    putInt8(data: number) {
+    public putInt8(data: number) {
         checkInt(data, -0x80, 0x7f);
 
         const length = 1;
@@ -123,7 +96,7 @@ export default class MessageWriter {
         this._currentSize += length;
     }
 
-    putInt16(data: number) {
+    public putInt16(data: number) {
         checkInt(data, -0x8000, 0x7fff);
 
         const length = 2;
@@ -131,7 +104,7 @@ export default class MessageWriter {
         this._currentSize += length;
     }
 
-    putInt32(data: number) {
+    public putInt32(data: number) {
         checkInt(data, -0x80000000, 0x7fffffff);
 
         const length = 4;
@@ -139,40 +112,39 @@ export default class MessageWriter {
         this._currentSize += length;
     }
 
-    putChar(data: string) {
-        checkString(data);
-
+    public putChar(data: string) {
         this.putUInt8(data.charCodeAt(0));
     }
 
-    putBytes(data: Buffer, sizePrefix?: boolean) {
-        checkBuffer(data);
-
-        const length = data.length;
-
-        if (sizePrefix) {
-            this.putInt32(length);
-        }
-
-        this._chunks.push([Type.Buffer, length, data]);
-        this._currentSize += length;
-    }
-
-    putString(data: string, sizePrefix?: boolean) {
-        checkString(data);
-
-        const length = Buffer.byteLength(data);
+    public putBytes(data: string | Buffer, sizePrefix?: boolean) {
+        const isString = typeof data === 'string';
+        const length = Buffer.byteLength(<string>data);
 
         if (sizePrefix) {
             this.putInt32(length);
         }
 
-        this._chunks.push([Type.String, length, data]);
+        this._chunks.push([isString ? Type.String : Type.Buffer, length, data]);
         this._currentSize += length;
     }
 
-    putCString(data: string) {
-        this.putString(data);
+    public putCString(data: string) {
+        this.putBytes(data);
         this.putUInt8(0);
+    }
+
+    private _clear() {
+        this._size = 0;
+        this._chunks = [];
+        this._currentSize = 0;
+        this._currentSizeChunk = null;
+    }
+
+    private _endPacket() {
+        if (this._currentSize > 0) {
+            this._currentSizeChunk[1] = this._currentSize;
+            this._size += this._currentSize;
+            this._currentSize = 0;
+        }
     }
 }
