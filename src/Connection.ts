@@ -1,11 +1,13 @@
 import * as Bluebird from 'bluebird';
 import * as Deque from 'double-ended-queue';
+import * as QueryTypes from './QueryTypes';
 import * as net from 'net';
 import * as packets from './packets';
 import BufferAggregator from './BufferAggregator';
-import Message from './Message';
+import ConnectionState from './ConnectionState';
+import Field from './Field';
 import MessageReader from './MessageReader';
-import Query from './Query';
+import MessageWriter from './MessageWriter';
 import Result from './Result';
 import TransactionState from './TransactionState';
 import debug from './debug';
@@ -41,25 +43,25 @@ export interface QueryOptions {
  *  because the parsers need to access and modify them,
  *  since they basically act as an extension to it.
  */
-class Connection extends EventEmitter {
+export default class Connection extends EventEmitter {
     static connect(options: Options): Bluebird.Disposer<Connection> {
         let conn: Connection;
 
         return new Bluebird<Connection>((resolve, reject) => {
             conn = new Connection(options);
 
-            function removeListener() {
+            function removeListeners() {
                 conn.removeListener('connect', onConnected);
                 conn.removeListener('error', onError);
             }
 
             function onError(err: any) {
-                removeListener();
+                removeListeners();
                 reject(err);
             }
 
             function onConnected() {
-                removeListener();
+                removeListeners();
                 resolve(conn);
             }
 
@@ -74,11 +76,10 @@ class Connection extends EventEmitter {
 
     options: ConnectionConfig;
 
-    _authenticated: boolean;
     _currentParser: Parser;
     _currentParserLength: number;
     _needsHeader: boolean;
-    _terminated: boolean;
+    _state: ConnectionState;
     _transactionState: number;
 
     _serverParameters: { [key: string]: string };
@@ -86,9 +87,10 @@ class Connection extends EventEmitter {
     _serverSecretKey: number;
 
     _aggregator: BufferAggregator;
-    _queue: Deque<Message>;
+    _currentResult: Result | null;
+    _queue: Deque<QueryTypes.Query<any>>;
 
-    _connectTimeout: NodeJS.Timer;
+    _connectTimeout: NodeJS.Timer | null;
     _socket: net.Socket;
 
     constructor(options: Options) {
@@ -98,46 +100,56 @@ class Connection extends EventEmitter {
         this.options = Object.freeze(new ConnectionConfig(options));
 
         // Connection state
-        this._authenticated = false;
         this._currentParser = parsers.Header;
         this._currentParserLength = HEADER_SIZE;
         this._needsHeader = true;
-        this._terminated = false;
-        this._transactionState = TransactionState.IDLE;
+        this._state = ConnectionState.Connecting;
+        this._transactionState = TransactionState.Idle;
 
         // Connection information
         this._serverParameters = {};
-        this._serverProcessId = undefined;
-        this._serverSecretKey = undefined;
+        this._serverProcessId = -1;
+        this._serverSecretKey = -1;
 
-        // Messaging queues
+        // Messaging queues and states
         this._aggregator = new BufferAggregator();
-        this._queue = new Deque<Message>();
+        this._currentResult = null;
+        this._queue = new Deque<QueryTypes.Query<any>>();
+
+        this._connectTimeout = setTimeout(() => {
+            this._connectTimeout = null;
+            this.emit('timeout');
+            this._error(new Error('timeout'));
+        }, this.options.connectTimeout);
 
         // Networking members
         this._socket = net.connect(this.options as any);
         this._socket.on('data', this._recv.bind(this));
-        this._socket.once('error', this._error.bind(this));
-
-        this._connectTimeout = setTimeout(() => {
-            this.emit('error', new Error('timeout'));
-        }, this.options.connectTimeout);
+        this._socket.on('error', this._error.bind(this));
+        this._socket.on('close', () => {
+            this._state = ConnectionState.Disconnected;
+        });
 
         // Initiate the connection by sending the startup message
-        const msg = new Message();
-        msg.addStartupMessage(this.options);
-        this._writeMessage(msg).promise
-            .then(this.emit.bind(this, 'connect'))
-            .catch(this.emit.bind(this, 'error'));
+        const query = new QueryTypes.StartupQuery(this);
+        query.promise().then(() => {
+            clearTimeout(<any>this._connectTimeout);
+
+            this._state = ConnectionState.Connected;
+            this._connectTimeout = null;
+
+            this.emit('connect');
+        });
     }
 
     destroy(): Bluebird<void> {
         debug.enabled && debug('Connection..destroy()');
 
+        this._state = ConnectionState.Disconnecting;
+
         return new Bluebird<void>((resolve, reject) => {
-            this._socket.destroy();
             this._socket.once('close', resolve);
-            this._clear();
+            this._socket.destroy();
         });
     }
 
@@ -145,20 +157,20 @@ class Connection extends EventEmitter {
         debug.enabled && debug('Connection..end()');
 
         return new Bluebird<void>((resolve, reject) => {
-            if (this._socket.writable !== true) {
+            if (!this._socket.writable) {
                 return resolve(undefined);
             }
 
-            if (this._authenticated) {
-                const msg = new Message();
-                msg.addTerminate();
-                this._writeMessage(msg);
+            if (this._state === ConnectionState.Connected) {
+                this._state = ConnectionState.Disconnecting;
 
-                this._terminated = true;
+                const msg = new MessageWriter();
+                msg.addTerminate();
+                this._send(msg);
             }
 
-            this._socket.end();
             this._socket.once('close', resolve);
+            this._socket.end();
         });
     }
 
@@ -172,10 +184,10 @@ class Connection extends EventEmitter {
         this._socket.resume();
     }
 
-    query(query: string): Bluebird<any>;
-    query(query: string, vals: any[]): Bluebird<any>;
-    query(query: QueryOptions): Bluebird<any>;
-    query(query: string | QueryOptions, vals?: any[]): Bluebird<any> {
+    query(query: string): Bluebird<Result>;
+    query(query: string, vals: any[]): Bluebird<Result>;
+    query(query: QueryOptions): Bluebird<Result>;
+    query(query: string | QueryOptions, vals?: any[]): Bluebird<Result> {
         if (typeof query !== 'object') {
             query = {
                 text: query,
@@ -185,75 +197,64 @@ class Connection extends EventEmitter {
 
         debug.enabled && debug(`Connection..query(${query})`);
 
-        const name = query.name || '';
         const text = query.text || '';
         const values = query.values || [];
         const types = query.types || [];
+        const name = query.name || '';
         let promise: Bluebird<any>;
 
         if (name === '' && values.length === 0) {
-            promise = this.queryText(query.text);
+            return this.queryText(query.text).then(results => results[0]);
         } else {
-            const msg = new Query();
-            msg.addParse(name, text, values, types);
-            msg.addBind(name, values, types);
-            msg.addDescribe(name, true);
-            msg.addExecute(name);
-            msg.addClose(name, false);
-            msg.addSync();
-            promise = this._writeMessage(msg).promise;
+            const query = new QueryTypes.ExtendedQuery(this, {
+                text,
+                values,
+                types,
+                name,
+            });
+            return query.promise();
         }
-
-        return promise.then(results => results[0]);
     }
 
-    queryText(text: string): Bluebird<any> {
+    queryText(text: string): Bluebird<Result[]> {
         debug.enabled && debug(`Connection..queryText(${text})`);
 
-        const msg = new Query();
-        msg.addQuery(text);
-        return this._writeMessage(msg).promise;
+        const query = new QueryTypes.SimpleQuery(this, text);
+        return query.promise();
     }
 
-    _writeMessage(msg: Message, unshift?: boolean): Message {
-        const buffer = msg.finish();
-
-        debug.enabled && debug('<<<', msg.constructor.name, buffer);
-
-        this._socket.write(buffer);
-
-        if (unshift) {
-            this._queue.unshift(msg);
-        } else {
-            this._queue.push(msg);
-        }
-
-        return msg;
-    }
-
-    _throwQueueMismatch(): Message {
+    _throwQueueMismatch(): QueryTypes.Query<any> {
         throw new Error('packet queue is empty');
     }
 
-    _queuePeekMaybe(): Message {
+    _queuePeekMaybe(): QueryTypes.Query<any> | undefined {
         return this._queue.peekFront();
     }
 
-    _queuePeek(): Message {
+    _queuePeek(): QueryTypes.Query<any> {
         return this._queuePeekMaybe() || this._throwQueueMismatch();
     }
 
-    _queueShiftMaybe(): Message {
+    _queueShiftMaybe(): QueryTypes.Query<any> | undefined {
         return this._queue.shift();
     }
 
-    _queueShift(): Message {
+    _queueShift(): QueryTypes.Query<any> {
         return this._queueShiftMaybe() || this._throwQueueMismatch();
     }
 
-    _clear() {
-        this._queue.clear();
-        this._aggregator.clear();
+    _pushNewResult(fields?: Field[]) {
+        const result = new Result(fields);
+        this._queuePeek().results.push(result);
+        this._currentResult = result;
+    }
+
+    _send(msg: MessageWriter, query?: QueryTypes.Query<any>) {
+        this._socket.write(msg.finish());
+
+        if (query) {
+            this._queue.push(query);
+        }
     }
 
     _recv(data: Buffer) {
@@ -268,8 +269,6 @@ class Connection extends EventEmitter {
                 const parser = this._currentParser;
                 const length = this._currentParserLength;
                 const reader = aggregateReader.getReader(length);
-
-                debug.enabled && debug('>>>', parser.name, reader.toBuffer());
 
                 const err = this._recv_catch(parser, reader);
 
@@ -292,7 +291,7 @@ class Connection extends EventEmitter {
     }
 
     // performance gain of 5% by seperating the unoptimizable try/catch
-    _recv_catch(parser: Parser, reader: MessageReader) {
+    _recv_catch(parser: Parser, reader: MessageReader): any {
         try {
             parser(this, reader);
         } catch (err) {
@@ -302,14 +301,11 @@ class Connection extends EventEmitter {
 
     _error(err: any) {
         // ECONNRESET will be raised after a Terminate message has been sent
-        if (this._terminated && err.code === 'ECONNRESET') {
+        if (this._state === ConnectionState.Disconnecting && err.code === 'ECONNRESET') {
             return;
         }
 
-        this.destroy().catch((err) => { });
+        this.destroy().catch(err => void 0);
         this.emit('error', err);
     }
 }
-
-
-export default Connection;

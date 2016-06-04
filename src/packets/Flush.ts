@@ -1,5 +1,5 @@
-import Message from '../Message';
+import MessageWriter from '../MessageWriter';
 
-export default function Packet$Flush(this: Message) {
+export default function Packet$Flush(this: MessageWriter) {
     this.beginPacket('H');
 }

@@ -7,5 +7,5 @@ export default function Parser$BackendKeyData(conn: Connection, reader: MessageR
     conn._serverProcessId = reader.getInt32();
     conn._serverSecretKey = reader.getInt32();
 
-    debug.enabled && debug('>>>', `Parser$BackendKeyData processId="${conn._serverProcessId}" secretKey="${conn._serverSecretKey}"`);
+    debug.enabled && debug('---', `Parser$BackendKeyData processId=${conn._serverProcessId} secretKey=${conn._serverSecretKey}`);
 }

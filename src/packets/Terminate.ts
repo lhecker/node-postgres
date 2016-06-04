@@ -1,5 +1,5 @@
-import Message from '../Message';
+import MessageWriter from '../MessageWriter';
 
-export default function Packet$Terminate(this: Message) {
+export default function Packet$Terminate(this: MessageWriter) {
     this.beginPacket('X');
 }

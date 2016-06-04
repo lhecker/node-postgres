@@ -10,17 +10,17 @@ import parsers from './';
  * In the next _recv() loop the actual _currentParser will be called.
  */
 export default function Parser$Header(conn: Connection, reader: MessageReader) {
-    const type   = reader.getUInt8();
-    const size   = reader.getInt32() - 4;
+    const type = reader.getUInt8();
+    const size = reader.getInt32() - 4;
     const parser = parsers.uint8[type];
 
-    debug.enabled && debug(`Parser$Header type=${String.fromCharCode(type)} parserSize=${size} parser=${parser ? '"' + parser.name + '"' : 'undefined'}`);
+    debug.enabled && debug('>>>', `Parser$Header type=${String.fromCharCode(type)} length=${size} parser=${parser ? parser.name : 'undefined'}`);
 
     if (!parser || size < 0 || size > conn.options.maxMessageSize) {
         throw new Error('invalid message header');
     }
 
-    conn._needsHeader         = false;
-    conn._currentParser       = parser;
+    conn._needsHeader = false;
+    conn._currentParser = parser;
     conn._currentParserLength = size;
 }

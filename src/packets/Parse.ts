@@ -1,6 +1,6 @@
-import Message from '../Message';
+import MessageWriter from '../MessageWriter';
 
-export default function Packet$Parse(this: Message, name: string, query: string, values: any[], types: number[]) {
+export default function Packet$Parse(this: MessageWriter, name: string, query: string, values: any[], types: number[]) {
     this.beginPacket('P');
 
     this.putCString(name); // prepared statement name

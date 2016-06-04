@@ -5,7 +5,7 @@ import {uint8 as ErrorFieldsUint8} from '../ErrorFields';
 
 export const type = 'E';
 export default function Parser$ErrorResponse(conn: Connection, reader: MessageReader) {
-    const msg = conn._queueShiftMaybe();
+    const query = conn._queuePeekMaybe();
     const error = new Error('ErrorResponse');
 
     do {
@@ -18,11 +18,11 @@ export default function Parser$ErrorResponse(conn: Connection, reader: MessageRe
             error[key] = value;
         }
 
-        debug.enabled && debug('---', `Parser$ErrorResponse ${String.fromCharCode(type)}="${value}"`);
+        debug.enabled && debug('---', `Parser$ErrorResponse ${String.fromCharCode(type)}='${value}'`);
     } while (reader.remaining > 1);
 
-    if (msg) {
-        msg.reject(error);
+    if (query) {
+        query.reject(error);
     } else {
         conn.emit('error', error);
     }

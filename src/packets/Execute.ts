@@ -1,6 +1,6 @@
-import Message from '../Message';
+import MessageWriter from '../MessageWriter';
 
-export default function Packet$Execute(this: Message, name: string) {
+export default function Packet$Execute(this: MessageWriter, name: string) {
     this.beginPacket('E');
 
     this.putCString(name); // portal (cursor) name

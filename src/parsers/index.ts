@@ -52,10 +52,11 @@ export default (() => {
         const type = module.type;
 
         console.assert(typeof parser === 'function');
+
         parsers[name] = parser;
 
         if (type) {
-            exports.uint8[type.charCodeAt(0)] = parser;
+            uint8[type.charCodeAt(0)] = parser;
         }
     }
 

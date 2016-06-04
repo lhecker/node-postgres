@@ -1,25 +1,26 @@
 import * as TypeReaders from './TypeReaders';
 import Field from './Field';
+import MessageReader from './MessageReader';
 
+type RowParser = (reader: MessageReader) => { [key: string]: any };
 
 // By creating a "JIT" parser for each query we improve performance by about 30-35%.
-function createRowParser(fields: Field[]): Function {
+function createRowParser(fields: Field[]): RowParser {
     const p = fields.map(field => (TypeReaders.types[field.typeId] || TypeReaders.DEFAULT)[field.formatCode]);
-    const row = fields.map((field, idx) => `${field.name}:r.parseDataColumn(p[${idx}])`).join(',');
+    const row = fields.map((field, idx) => `'${field.name}':r.parseDataColumn(p[${idx}])`).join(',');
     const body = `return function Parser$DataRow$Custom(r) { return {${row}}; }`;
     const generator = new Function('p', body);
     return generator(p);
 }
 
-
 export default class Result {
-    command: string;
-    fields: Field[];
-    rows: { [key: string]: any }[];
+    public command: string | undefined;
+    public fields: Field[];
+    public rows: { [key: string]: any }[];
 
-    _parser: Function;
+    private _parser: RowParser;
 
-    constructor(fields?: Field[]) {
+    public constructor(fields?: Field[]) {
         this.command = undefined;
         this.fields = fields || [];
         this.rows = [];
@@ -27,5 +28,10 @@ export default class Result {
         if (fields && fields.length) {
             this._parser = createRowParser(fields);
         }
+    }
+
+    // must be accessible by Parser$DataRow
+    public _parse(reader: MessageReader) {
+        this.rows.push(this._parser(reader));
     }
 }

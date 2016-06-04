@@ -3,8 +3,8 @@
  * have been written correctly and can be used interchangeably.
  */
 const keys = {
-    TypeReaders: Object.keys(require('./TypeReaders')),
-    TypeWriters: Object.keys(require('./TypeWriters')),
+    TypeReaders: Object.keys(require('./TypeReaders').types),
+    TypeWriters: Object.keys(require('./TypeWriters').types),
 };
 
 function assert(a: string, b: string) {

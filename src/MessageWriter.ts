@@ -1,9 +1,13 @@
+import * as packets from './packets';
+import * as util from 'util';
+import ConnectionConfig from './ConnectionConfig';
+import debug from './debug';
+
 function checkInt(val: any, lo: number, hi: number) {
     if (typeof val !== 'number' || val < lo || val > hi) {
         throw new TypeError('value is out of bounds');
     }
 }
-
 
 const enum Type {
     UInt8,
@@ -17,11 +21,11 @@ const enum Type {
 type ChunkData = number | string | Buffer;
 type Chunk = [Type, number, ChunkData];
 
-export default class MessageWriter {
+class MessageWriter {
     private _size: number;
     private _chunks: Chunk[];
-    private _currentSize: number;
-    private _currentSizeChunk: Chunk;
+    private _currentChunkLength: number;
+    private _currentLengthField: Chunk;
 
     public static createHeaderOnlyBuffer(type: string) {
         return new Buffer([type.charCodeAt(0), 0x00, 0x00, 0x00, 0x04]);
@@ -36,10 +40,15 @@ export default class MessageWriter {
 
         if (type !== undefined) {
             this.putChar(type);
+
+            // Since the type field is not counted towards
+            // the chunk length we have to trick a bit.
+            this._size++;
+            this._currentChunkLength = 0;
         }
 
         this.putInt32(0);
-        this._currentSizeChunk = this._chunks[this._chunks.length - 1];
+        this._currentLengthField = this._chunks[this._chunks.length - 1];
     }
 
     public finish(): Buffer {
@@ -48,9 +57,7 @@ export default class MessageWriter {
         const buffer = new Buffer(this._size);
         let offset = 0;
 
-        for (let i = 0; i < this._chunks.length; i++) {
-            const [type, length, data] = this._chunks[i];
-
+        for (let [type, length, data] of this._chunks) {
             switch (type) {
                 case Type.UInt8:
                     buffer.writeUInt8(data as number, offset, true);
@@ -85,7 +92,7 @@ export default class MessageWriter {
 
         const length = 1;
         this._chunks.push([Type.UInt8, length, data]);
-        this._currentSize += length;
+        this._currentChunkLength += length;
     }
 
     public putInt8(data: number) {
@@ -93,7 +100,7 @@ export default class MessageWriter {
 
         const length = 1;
         this._chunks.push([Type.Int8, length, data]);
-        this._currentSize += length;
+        this._currentChunkLength += length;
     }
 
     public putInt16(data: number) {
@@ -101,7 +108,7 @@ export default class MessageWriter {
 
         const length = 2;
         this._chunks.push([Type.Int16, length, data]);
-        this._currentSize += length;
+        this._currentChunkLength += length;
     }
 
     public putInt32(data: number) {
@@ -109,7 +116,7 @@ export default class MessageWriter {
 
         const length = 4;
         this._chunks.push([Type.Int32, length, data]);
-        this._currentSize += length;
+        this._currentChunkLength += length;
     }
 
     public putChar(data: string) {
@@ -125,7 +132,7 @@ export default class MessageWriter {
         }
 
         this._chunks.push([isString ? Type.String : Type.Buffer, length, data]);
-        this._currentSize += length;
+        this._currentChunkLength += length;
     }
 
     public putCString(data: string) {
@@ -136,15 +143,63 @@ export default class MessageWriter {
     private _clear() {
         this._size = 0;
         this._chunks = [];
-        this._currentSize = 0;
-        this._currentSizeChunk = null;
+        this._currentChunkLength = 0;
+        this._currentLengthField = null as any as Chunk;
     }
 
     private _endPacket() {
-        if (this._currentSize > 0) {
-            this._currentSizeChunk[1] = this._currentSize;
-            this._size += this._currentSize;
-            this._currentSize = 0;
+        if (this._currentChunkLength > 0) {
+            this._currentLengthField[2] = this._currentChunkLength;
+            this._size += this._currentChunkLength;
+            this._currentChunkLength = 0;
         }
     }
 }
+
+interface MessageWriter {
+    addBind(name: string, values: any[], types: number[]): void;
+    addClose(name: string, portalOnly: boolean): void;
+    addCopyData(): void;
+    addCopyDone(): void;
+    addCopyFail(): void;
+    addDescribe(name: string, isPortal: boolean): void;
+    addExecute(name: string): void;
+    addFlush(): void;
+    addFunctionCall(): void;
+    addParse(name: string, query: string, values: any[], types: number[]): void;
+    addPasswordMessage(password: string): void;
+    addQuery(query: string): void;
+    addStartupMessage(config: ConnectionConfig): void;
+    addSync(): void;
+    addTerminate(): void;
+}
+
+(() => {
+    function apply(name: string, fn: Function) {
+        MessageWriter.prototype['add' + name] = fn;
+    }
+
+    function prodApply(name: string) {
+        apply(name, packets[name]);
+    }
+
+    function debugApply(name: string) {
+        const packetFn: Function = packets[name];
+        const paramNames = packetFn.toString().match(/^[^(]+\(([^)]*)/)[1].split(', ');
+
+        apply(name, function debugProxy() {
+            const args = paramNames.map((name, idx) => {
+                const opts = { depth: 1, maxArrayLength: 3 };
+                const arg = util.inspect(arguments[idx], opts);
+                return ` ${name}=${arg}`;
+            }).join('');
+
+            debug('<<<', `Packet$${name}${args}`);
+            packetFn.apply(this, arguments);
+        });
+    }
+
+    Object.keys(packets).forEach(debug.enabled ? debugApply : prodApply);
+})();
+
+export default MessageWriter;

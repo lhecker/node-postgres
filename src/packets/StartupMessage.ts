@@ -1,7 +1,7 @@
 import ConnectionConfig from '../ConnectionConfig';
-import Message from '../Message';
+import MessageWriter from '../MessageWriter';
 
-export default function Packet$StartupMessage(this: Message, config: ConnectionConfig) {
+export default function Packet$StartupMessage(this: MessageWriter, config: ConnectionConfig) {
     this.beginPacket();
 
     this.putInt32(196608);

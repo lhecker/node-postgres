@@ -1,7 +1,7 @@
 import * as TypeWriters from '../TypeWriters';
-import Message from '../Message';
+import MessageWriter from '../MessageWriter';
 
-export default function Packet$Bind(this: Message, name: string, values: any[], types: number[]) {
+export default function Packet$Bind(this: MessageWriter, name: string, values: any[], types: number[]) {
     this.beginPacket('B');
 
     this.putCString(name); // destination portal (cursor) name

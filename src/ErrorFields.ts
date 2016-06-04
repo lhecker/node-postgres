@@ -1,6 +1,6 @@
 export const uint8 = new Array(256);
-export const perName = {};
-export const perIdentifier = {
+
+const perIdentifier = {
     S: 'severity',
     C: 'code',
     M: 'message',
@@ -21,7 +21,6 @@ export const perIdentifier = {
 };
 
 for (let key in perIdentifier) {
-    const value = perIdentifier[key];
-    perName[value] = key;
-    uint8[key.charCodeAt(0)] = value;
+    const name = perIdentifier[key];
+    uint8[key.charCodeAt(0)] = name;
 }

@@ -1,8 +1,6 @@
 import Connection from '../Connection';
 import Field from '../Field';
 import MessageReader from '../MessageReader';
-import Query from '../Query';
-import Result from '../Result';
 import debug from '../debug';
 
 export const type = 'T';
@@ -24,15 +22,9 @@ export default function Parser$RowDescription(conn: Connection, reader: MessageR
             formatCode: reader.getInt16(),
         };
 
-        fields.push(field);
+        fields[i] = field;
         debug.enabled && debug('---', `Parser$RowDescription ${Object.keys(field).map(key => `${key}=${field[key]}`)}`);
     }
 
-    const msg = conn._queuePeek();
-
-    if (msg instanceof Query) {
-        msg.results.push(new Result(fields));
-    } else {
-        throw new Error('expected Query instance');
-    }
+    conn._pushNewResult(fields);
 }

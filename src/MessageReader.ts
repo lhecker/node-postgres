@@ -4,15 +4,7 @@ class MessageReader {
     private _off: number;
     private _end: number;
 
-    constructor(data: MessageReader | Buffer, beg?: number, end?: number) {
-        if (!isFinite(beg) || beg < 0) {
-            beg = 0;
-        }
-
-        if (!isFinite(end) || end < 0) {
-            end = Infinity;
-        }
-
+    constructor(data: MessageReader | Buffer, beg: number = 0, end: number = Infinity) {
         let maxEnd = 0;
 
         if (data instanceof MessageReader) {
@@ -28,7 +20,7 @@ class MessageReader {
             maxEnd = data.length;
         }
 
-        this._beg = Math.min(beg, maxEnd);
+        this._beg = Math.min(Math.max(beg, 0), maxEnd);
         this._off = this._beg;
         this._end = Math.min(Math.max(end, this._beg), maxEnd);
     }
@@ -79,10 +71,6 @@ class MessageReader {
         const offset = this.offset;
         this.advance(n);
         return new MessageReader(this, offset, offset + n);
-    }
-
-    getString(type?: string): string {
-        return this._buf.toString(type || 'utf8', this._off, this._end);
     }
 
     getRemaining(): Buffer {
@@ -155,7 +143,11 @@ class MessageReader {
         return this._buf.readDoubleBE(off, true);
     }
 
-    getCString(): string {
+    getString(type?: string): string {
+        return this._buf.toString(type || 'utf8', this._off, this._end);
+    }
+
+    getCString(type?: string): string {
         const off = this._off;
         const idx = this._buf.indexOf(0x0, off);
 
@@ -164,7 +156,7 @@ class MessageReader {
         }
 
         this._off = idx + 1;
-        return this._buf.toString('utf8', off, idx);
+        return this._buf.toString(type || 'utf8', off, idx);
     }
 
     // This method exists specifically for Parser$DataRow$Custom.

@@ -1,39 +1,53 @@
 'use strict';
 
-const Connection = require('./lib/Connection');
+require('source-map-support/register');
+
+const Bluebird = require('bluebird');
+
+global.Bluebird = Bluebird;
+
+const Connection = require('./lib/Connection').default;
 const pg = require('pg');
 
-var Promise = require('bluebird');
+const query = `SELECT generate_series(1, $1) AS id, md5(random()::text) AS descr`;
+const args = [1 * 1000 * 1000];
 
+function pgQuery() {
+    return new Bluebird((resolve, reject) => {
+        const conn = new pg.Client('postgres://postgres:qyce-zhju@localhost/fieldfucker');
+        conn.connect(err => {
+            if (err) {
+                return reject(err);
+            }
 
+            conn.query(query, args, (err, result) => {
+                if (err) {
+                    return reject(err);
+                }
 
-console.time('pg');
+                resolve(result);
+                conn.end();
+            });
+        });
+    });
+}
 
-pg.connect('postgres://postgres:qyce-zhju@localhost/eucstats', function (err, conn, done) {
-    conn.query("SELECT * FROM test", function (err, result) {
+Bluebird.resolve()
+    .then(() => console.time('pg'))
+    .then(() => pgQuery())
+    .then(() => {
         console.timeEnd('pg');
-        done();
+    })
+    .then(() => console.time('postgres'))
+    .then(() => {
+        return Bluebird.using(Connection.connect({
+            user    : 'postgres',
+            password: 'qyce-zhju',
+            database: 'fieldfucker',
+        }), conn => {
+            return conn.query(query, args);
+        });
+    })
+    .then(() => {
+        console.timeEnd('postgres');
     });
-});
-
-setTimeout(() => {
-    console.time('postgres');
-
-    Promise.using(Connection.connect({
-        user    : 'postgres',
-        password: 'qyce-zhju',
-        database: 'eucstats',
-    }), (conn) => {
-        return conn.query({
-                name: 'test',
-                text: "SELECT * FROM test",
-            })
-            //.then((results) => console.log(require('util').inspect(results, {depth:null, colors:true})))
-            .then((results) => console.timeEnd('postgres'))
-    });
-}, 30000);
-
-setTimeout(console.log.bind(console, 1), 1000);
-setTimeout(console.log.bind(console, 2), 2000);
-
-setTimeout(()=>{}, 600000);
