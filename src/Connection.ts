@@ -2,7 +2,7 @@ import * as Bluebird from 'bluebird';
 import * as Deque from 'double-ended-queue';
 import * as QueryTypes from './QueryTypes';
 import * as net from 'net';
-import * as packets from './packets';
+import * as util from 'util';
 import BufferAggregator from './BufferAggregator';
 import ConnectionState from './ConnectionState';
 import Field from './Field';
@@ -19,61 +19,13 @@ import './TypeAssert';
 
 const HEADER_SIZE = 5; // type [Byte1] + size [Int32]
 
-
-export type Options = Options;
-
-export interface QueryOptions {
-    text: string;
-    values?: any[];
-    types?: any[];
-    name?: string;
-}
-
 /*
- * TODO:
- *   Reject all DeferredPacket instances if _error() is called.
- *   Make it impossible to add more packets etc.
- *
- * TODO:
- *   Add connection state logic.
- *   (i.e.: When is query() allowed? When does it throw an error, or reject the promise? etc.)
- *
  * NOTE:
  *  Connection's methods and members cannot be declared as private,
  *  because the parsers need to access and modify them,
  *  since they basically act as an extension to it.
  */
 export default class Connection extends EventEmitter {
-    static connect(options: Options): Bluebird.Disposer<Connection> {
-        let conn: Connection;
-
-        return new Bluebird<Connection>((resolve, reject) => {
-            conn = new Connection(options);
-
-            function removeListeners() {
-                conn.removeListener('connect', onConnected);
-                conn.removeListener('error', onError);
-            }
-
-            function onError(err: any) {
-                removeListeners();
-                reject(err);
-            }
-
-            function onConnected() {
-                removeListeners();
-                resolve(conn);
-            }
-
-            conn.on('error', onError);
-            conn.on('connect', onConnected);
-        }).disposer(() => {
-            if (conn) {
-                conn.end();
-            }
-        });
-    }
-
     options: ConnectionConfig;
 
     _currentParser: Parser;
@@ -93,11 +45,11 @@ export default class Connection extends EventEmitter {
     _connectTimeout: NodeJS.Timer | null;
     _socket: net.Socket;
 
-    constructor(options: Options) {
+    constructor(opts: string | Options) {
         super();
 
         // Public members
-        this.options = Object.freeze(new ConnectionConfig(options));
+        this.options = Object.freeze(new ConnectionConfig(opts));
 
         // Connection state
         this._currentParser = parsers.Header;
@@ -143,7 +95,7 @@ export default class Connection extends EventEmitter {
     }
 
     destroy(): Bluebird<void> {
-        debug.enabled && debug('Connection..destroy()');
+        debug.enabled && debug('Connection#destroy()');
 
         this._state = ConnectionState.Disconnecting;
 
@@ -154,7 +106,7 @@ export default class Connection extends EventEmitter {
     }
 
     end(): Bluebird<void> {
-        debug.enabled && debug('Connection..end()');
+        debug.enabled && debug('Connection#end()');
 
         return new Bluebird<void>((resolve, reject) => {
             if (!this._socket.writable) {
@@ -175,49 +127,39 @@ export default class Connection extends EventEmitter {
     }
 
     pause() {
-        debug.enabled && debug('Connection..pause()');
+        debug.enabled && debug('Connection#pause()');
         this._socket.pause();
     }
 
     resume() {
-        debug.enabled && debug('Connection..resume()');
+        debug.enabled && debug('Connection#resume()');
         this._socket.resume();
     }
 
     query(query: string): Bluebird<Result>;
     query(query: string, vals: any[]): Bluebird<Result>;
-    query(query: QueryOptions): Bluebird<Result>;
-    query(query: string | QueryOptions, vals?: any[]): Bluebird<Result> {
-        if (typeof query !== 'object') {
-            query = {
-                text: query,
-                values: vals,
-            };
-        }
+    query(opts: QueryTypes.QueryOptions): Bluebird<Result>;
 
-        debug.enabled && debug(`Connection..query(${query})`);
+    query(arg1: any, arg2?: any[]): Bluebird<Result> {
+        const opts: QueryTypes.ExtendedQueryOptions = {
+            text: typeof arg1 === 'string' ? arg1 : (arg1.text || ''),
+            values: arg2 || arg1.values || [],
+            types: arg1.types || [],
+            name: arg1.name || '',
+        };
 
-        const text = query.text || '';
-        const values = query.values || [];
-        const types = query.types || [];
-        const name = query.name || '';
-        let promise: Bluebird<any>;
+        debug.enabled && debug(`Connection#query(${util.inspect(opts, <any>{ depth: 1, maxArrayLength: 3 })})`);
 
-        if (name === '' && values.length === 0) {
-            return this.queryText(query.text).then(results => results[0]);
+        if (opts.name === '' && opts.values.length === 0) {
+            return this.queryText(opts.text).then(results => results[0]);
         } else {
-            const query = new QueryTypes.ExtendedQuery(this, {
-                text,
-                values,
-                types,
-                name,
-            });
+            const query = new QueryTypes.ExtendedQuery(this, opts);
             return query.promise();
         }
     }
 
     queryText(text: string): Bluebird<Result[]> {
-        debug.enabled && debug(`Connection..queryText(${text})`);
+        debug.enabled && debug(`Connection#queryText(${text})`);
 
         const query = new QueryTypes.SimpleQuery(this, text);
         return query.promise();

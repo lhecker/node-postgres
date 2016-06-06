@@ -23,6 +23,7 @@
         "src/ErrorCodes.ts",
         "src/ErrorFields.ts",
         "src/Field.ts",
+        "src/index.ts",
         "src/MessageReader.ts",
         "src/MessageWriter.ts",
         "src/packets/Bind.ts",

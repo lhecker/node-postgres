@@ -2,6 +2,7 @@ import * as packets from './packets';
 import * as util from 'util';
 import ConnectionConfig from './ConnectionConfig';
 import debug from './debug';
+import {ExtendedQueryOptions} from './QueryTypes';
 
 function checkInt(val: any, lo: number, hi: number) {
     if (typeof val !== 'number' || val < lo || val > hi) {
@@ -157,21 +158,21 @@ class MessageWriter {
 }
 
 interface MessageWriter {
-    addBind(name: string, values: any[], types: number[]): void;
-    addClose(name: string, portalOnly: boolean): void;
-    addCopyData(): void;
-    addCopyDone(): void;
-    addCopyFail(): void;
-    addDescribe(name: string, isPortal: boolean): void;
-    addExecute(name: string): void;
-    addFlush(): void;
-    addFunctionCall(): void;
-    addParse(name: string, query: string, values: any[], types: number[]): void;
-    addPasswordMessage(password: string): void;
-    addQuery(query: string): void;
-    addStartupMessage(config: ConnectionConfig): void;
-    addSync(): void;
-    addTerminate(): void;
+    addBind(this: MessageWriter, opts: ExtendedQueryOptions): void;
+    addClose(this: MessageWriter, name: string, both: boolean): void;
+    addCopyData(this: MessageWriter): void;
+    addCopyDone(this: MessageWriter): void;
+    addCopyFail(this: MessageWriter): void;
+    addDescribe(this: MessageWriter, name: string, isPortal: boolean): void;
+    addExecute(this: MessageWriter, name: string): void;
+    addFlush(this: MessageWriter): void;
+    addFunctionCall(this: MessageWriter): void;
+    addParse(this: MessageWriter, opts: ExtendedQueryOptions): void;
+    addPasswordMessage(this: MessageWriter, password: string): void;
+    addQuery(this: MessageWriter, query: string): void;
+    addStartupMessage(this: MessageWriter, config: ConnectionConfig): void;
+    addSync(this: MessageWriter): void;
+    addTerminate(this: MessageWriter): void;
 }
 
 (() => {
@@ -189,8 +190,7 @@ interface MessageWriter {
 
         apply(name, function debugProxy() {
             const args = paramNames.map((name, idx) => {
-                const opts = { depth: 1, maxArrayLength: 3 };
-                const arg = util.inspect(arguments[idx], opts);
+                const arg = util.inspect(arguments[idx], <any>{ depth: 1, maxArrayLength: 3 });
                 return ` ${name}=${arg}`;
             }).join('');
 

@@ -1,8 +1,8 @@
 {
-  "name": "node-postgres",
+  "name": "postgres",
   "version": "0.0.1",
-  "description": "A modern and fast PostgreSQL client in pure JavaScript",
-  "main": "index.js",
+  "description": "A fast and modern PostgreSQL client in pure JavaScript",
+  "main": "lib/index.js",
   "keywords": [
     "postgresql",
     "postgre",
@@ -23,6 +23,6 @@
     "double-ended-queue": "^2.1.0-0"
   },
   "engines": {
-    "node": ">=4.0.0"
+    "node": ">=6.0.0"
   }
 }

@@ -82,15 +82,15 @@ export interface ExtendedQueryOptions extends QueryOptions {
 }
 
 export class ExtendedQuery extends Query<Result> {
-    public constructor(conn: Connection, options: ExtendedQueryOptions) {
+    public constructor(conn: Connection, opts: ExtendedQueryOptions) {
         super();
 
         const msg = new MessageWriter();
-        msg.addParse(options.name, options.text, options.values, options.types);
-        msg.addBind(options.name, options.values, options.types);
-        msg.addDescribe(options.name, true);
-        msg.addExecute(options.name);
-        msg.addClose(options.name, false);
+        msg.addParse(opts);
+        msg.addBind(opts);
+        msg.addDescribe(opts.name, true);
+        msg.addExecute(opts.name);
+        msg.addClose(opts.name, true);
         msg.addSync();
         conn._send(msg, this);
     }
