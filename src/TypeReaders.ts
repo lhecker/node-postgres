@@ -1,7 +1,16 @@
+/*!
+ * Copyright 2015 The node-postgres Developers.
+ *
+ * Licensed under the Apache License, Version 2.0, <LICENSE-APACHE or
+ * http://apache.org/licenses/LICENSE-2.0> or the MIT license <LICENSE-MIT or
+ * http://opensource.org/licenses/MIT>, at your option. This file may not be
+ * copied, modified, or distributed except according to those terms.
+ */
+
 import MessageReader from './MessageReader';
 
 function TypeReader$bool$text(reader: MessageReader) {
-    // uses 'Y' and 'N' ---> check for 'Y'
+    // PostgreSQL uses 't' and 'f' ---> check for 't'
     return reader.getUInt8() === 0x74;
 }
 
@@ -35,6 +44,7 @@ function TypeReader$int4$binary(reader: MessageReader): number {
 }
 
 function TypeReader$int8$binary(reader: MessageReader): number {
+    // FYI: JS code is executed left to right => we read the higher part first
     return reader.getInt32() * 4294967296 + reader.getUInt32(); // TODO: int8 support
 }
 
@@ -63,9 +73,12 @@ function TypeReader$timestamp$binary(reader: MessageReader): Date {
 }
 
 function TypeReader$timestamptz$text(reader: MessageReader): Date {
-    // postgres formats timestamptz as '2015-09-24 19:03:07.626+02'
-    // ---> v8 interprets '+02' as +2 minutes instead of hours
-    return new Date(reader.getString('ascii') + ':00');
+    return new Date(reader.getString('ascii'));
+}
+
+function TypeReader$timestamptz$binary(reader: MessageReader): Date {
+    // same as for timestamp
+    return new Date((reader.getInt32() * 4294967.296) + (reader.getUInt32() / 1000) + 946684800000);
 }
 
 type TypeReader = (reader: MessageReader) => any;
@@ -152,13 +165,13 @@ types[1114] /* timestamp      */ = [TypeReader$timestamp$text, TypeReader$timest
 types[1115] /* _timestamp     */ = DEFAULT;
 types[1182] /* _date          */ = DEFAULT;
 types[1183] /* _time          */ = DEFAULT;
-types[1184] /* timestamptz    */ = [TypeReader$timestamptz$text, TypeReader$timestamp$binary];
+types[1184] /* timestamptz    */ = [TypeReader$timestamptz$text, TypeReader$timestamptz$binary];
 types[1185] /* _timestamptz   */ = DEFAULT;
 types[1186] /* interval       */ = DEFAULT;
 types[1187] /* _interval      */ = DEFAULT;
 types[1231] /* _numeric       */ = DEFAULT;
 types[1263] /* _cstring       */ = DEFAULT;
-types[1266] /* timetz         */ = [TypeReader$timestamp$text, TypeReader$timestamp$binary];
+types[1266] /* timetz         */ = [TypeReader$timestamptz$text, TypeReader$timestamptz$binary];
 types[1270] /* _timetz        */ = DEFAULT;
 types[1560] /* bit            */ = DEFAULT;
 types[1561] /* _bit           */ = DEFAULT;

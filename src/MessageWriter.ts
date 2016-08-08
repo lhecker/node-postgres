@@ -1,8 +1,17 @@
+/*!
+ * Copyright 2015 The node-postgres Developers.
+ *
+ * Licensed under the Apache License, Version 2.0, <LICENSE-APACHE or
+ * http://apache.org/licenses/LICENSE-2.0> or the MIT license <LICENSE-MIT or
+ * http://opensource.org/licenses/MIT>, at your option. This file may not be
+ * copied, modified, or distributed except according to those terms.
+ */
+
 import * as packets from './packets';
-import * as util from 'util';
 import ConnectionConfig from './ConnectionConfig';
 import debug from './debug';
-import {ExtendedQueryOptions} from './QueryTypes';
+import { ExtendedQueryOptions } from './QueryTypes';
+import { inspect } from 'util';
 
 function checkInt(val: any, lo: number, hi: number) {
     if (typeof val !== 'number' || val < lo || val > hi) {
@@ -10,23 +19,38 @@ function checkInt(val: any, lo: number, hi: number) {
     }
 }
 
-const enum Type {
-    UInt8,
-    Int8,
-    Int16,
-    Int32,
-    String,
-    Buffer,
-}
+const TYPE_UINT8: TypeOp = (buffer, offset, data) => void buffer.writeUInt8(data as number, offset, true);
+const TYPE_INT8: TypeOp = (buffer, offset, data) => void buffer.writeInt8(data as number, offset, true);
+const TYPE_UINT16: TypeOp = (buffer, offset, data) => void buffer.writeUInt16BE(data as number, offset, true);
+const TYPE_INT16: TypeOp = (buffer, offset, data) => void buffer.writeInt16BE(data as number, offset, true);
+const TYPE_UINT32: TypeOp = (buffer, offset, data) => void buffer.writeUInt32BE(data as number, offset, true);
+const TYPE_INT32: TypeOp = (buffer, offset, data) => void buffer.writeInt32BE(data as number, offset, true);
+const TYPE_FLOAT: TypeOp = (buffer, offset, data) => void buffer.writeFloatBE(data as number, offset, true);
+const TYPE_DOUBLE: TypeOp = (buffer, offset, data) => void buffer.writeDoubleBE(data as number, offset, true);
+const TYPE_BUFFER: TypeOp = (buffer, offset, data) => void (data as Buffer).copy(buffer, offset);
 
-type ChunkData = number | string | Buffer;
-type Chunk = [Type, number, ChunkData];
+type TypeOp = (buffer: Buffer, offset: number, data: any) => void;
+type AccData = [TypeOp, number | string | Buffer];
+type ChunkData = Buffer | [AccData[], number];
 
 class MessageWriter {
-    private _size: number;
-    private _chunks: Chunk[];
-    private _currentChunkLength: number;
-    private _currentLengthField: Chunk;
+    private _chunks: ChunkData[];
+
+    // The main "ACCumulator". In _flushAcc() the pieces contained
+    // in here will be merged into a single Buffer.
+    private _acc: AccData[];
+
+    // Contains the total length of all pieces in _acc.
+    // This field is only updated sporadically in _endPacket().
+    private _accSize: number;
+
+    // Contains the current message length.
+    // _flushAcc() does not necessarely reset this to 0.
+    private _messageLength: number;
+
+    // A backreference to the length field in the last message header.
+    // This is used to retroactively set the correct message length.
+    private _messageLengthField: null | AccData;
 
     public static createHeaderOnlyBuffer(type: string) {
         return new Buffer([type.charCodeAt(0), 0x00, 0x00, 0x00, 0x04]);
@@ -42,82 +66,43 @@ class MessageWriter {
         if (type !== undefined) {
             this.putChar(type);
 
-            // Since the type field is not counted towards
-            // the chunk length we have to trick a bit.
-            this._size++;
-            this._currentChunkLength = 0;
+            // Since the type field is NOT counted towards
+            // the message length we have to trick a bit.
+            this._accSize++;
+            this._messageLength = 0;
         }
 
         this.putInt32(0);
-        this._currentLengthField = this._chunks[this._chunks.length - 1];
+        this._messageLengthField = this._acc[this._acc.length - 1];
     }
 
-    public finish(): Buffer {
+    public finish(): Buffer[] {
         this._endPacket();
+        this._flushAcc();
 
-        const buffer = new Buffer(this._size);
-        let offset = 0;
-
-        for (let [type, length, data] of this._chunks) {
-            switch (type) {
-                case Type.UInt8:
-                    buffer.writeUInt8(data as number, offset, true);
-                    break;
-                case Type.Int8:
-                    buffer.writeInt8(data as number, offset, true);
-                    break;
-                case Type.Int16:
-                    buffer.writeInt16BE(data as number, offset, true);
-                    break;
-                case Type.Int32:
-                    buffer.writeInt32BE(data as number, offset, true);
-                    break;
-                case Type.Buffer:
-                    (data as Buffer).copy(buffer, offset);
-                    break;
-                case Type.String:
-                    buffer.write(data as string, offset, length, 'utf8');
-                    break;
-            }
-
-            offset += length;
-        }
+        const buffers = this._chunks;
 
         this._clear();
 
-        return buffer;
+        for (let i = 0; i < buffers.length; i++) {
+            const chunk = buffers[i];
+
+            if (!(chunk instanceof Buffer)) {
+                buffers[i] = MessageWriter._accToBuff(chunk[0], chunk[1]);
+            }
+        }
+
+        return buffers as Buffer[];
     }
 
-    public putUInt8(data: number) {
-        checkInt(data, 0x00, 0xff);
-
-        const length = 1;
-        this._chunks.push([Type.UInt8, length, data]);
-        this._currentChunkLength += length;
+    public putFloat(data: number) {
+        this._acc.push([TYPE_FLOAT, data]);
+        this._messageLength += 4;
     }
 
-    public putInt8(data: number) {
-        checkInt(data, -0x80, 0x7f);
-
-        const length = 1;
-        this._chunks.push([Type.Int8, length, data]);
-        this._currentChunkLength += length;
-    }
-
-    public putInt16(data: number) {
-        checkInt(data, -0x8000, 0x7fff);
-
-        const length = 2;
-        this._chunks.push([Type.Int16, length, data]);
-        this._currentChunkLength += length;
-    }
-
-    public putInt32(data: number) {
-        checkInt(data, -0x80000000, 0x7fffffff);
-
-        const length = 4;
-        this._chunks.push([Type.Int32, length, data]);
-        this._currentChunkLength += length;
+    public putDouble(data: number) {
+        this._acc.push([TYPE_DOUBLE, data]);
+        this._messageLength += 8;
     }
 
     public putChar(data: string) {
@@ -125,15 +110,26 @@ class MessageWriter {
     }
 
     public putBytes(data: string | Buffer, sizePrefix?: boolean) {
-        const isString = typeof data === 'string';
-        const length = Buffer.byteLength(<string>data);
+        if (typeof data === 'string') {
+            data = Buffer.from(data, 'utf8');
+        }
 
         if (sizePrefix) {
             this.putInt32(length);
         }
 
-        this._chunks.push([isString ? Type.String : Type.Buffer, length, data]);
-        this._currentChunkLength += length;
+        // Prevent copying around large buffers
+        // Testing showed that copying buffers with sizes between 0
+        // and 1024 bytes is almost always of similar performance,
+        // while dropping off sharply starting at sizes of 2048 bytes.
+        if (data.length > 1024) {
+            this._flushAcc();
+            this._chunks.push(data);
+        } else {
+            this._acc.push([TYPE_BUFFER, data]);
+        }
+
+        this._messageLength += length;
     }
 
     public putCString(data: string) {
@@ -142,22 +138,52 @@ class MessageWriter {
     }
 
     private _clear() {
-        this._size = 0;
         this._chunks = [];
-        this._currentChunkLength = 0;
-        this._currentLengthField = null as any as Chunk;
+        this._acc = [];
+        this._accSize = 0;
+        this._messageLength = 0;
+        this._messageLengthField = null;
     }
 
     private _endPacket() {
-        if (this._currentChunkLength > 0) {
-            this._currentLengthField[2] = this._currentChunkLength;
-            this._size += this._currentChunkLength;
-            this._currentChunkLength = 0;
+        const length = this._messageLength;
+
+        if (length > 0) {
+            this._messageLengthField![1] = length;
+            this._accSize += length;
+            this._messageLength = 0;
         }
+    }
+
+    private _flushAcc() {
+        if (this._accSize > 0) {
+            this._chunks.push([this._acc, this._accSize]);
+            this._acc = [];
+            this._accSize = 0;
+        }
+    }
+
+    private static _accToBuff(acc: AccData[], accSize: number): Buffer {
+        const buffer = (<any>Buffer).allocUnsafe(accSize);
+        let offset = 0;
+
+        for (let chunk of acc) {
+            chunk[0](buffer, offset, chunk[1]);
+            offset += length;
+        }
+
+        return buffer;
     }
 }
 
 interface MessageWriter {
+    putUInt8(data: number): void;
+    putInt8(data: number): void;
+    putUInt16(data: number): void;
+    putInt16(data: number): void;
+    putUInt32(data: number): void;
+    putInt32(data: number): void;
+
     addBind(this: MessageWriter, opts: ExtendedQueryOptions): void;
     addClose(this: MessageWriter, name: string, both: boolean): void;
     addCopyData(this: MessageWriter): void;
@@ -175,6 +201,30 @@ interface MessageWriter {
     addTerminate(this: MessageWriter): void;
 }
 
+// Dynamically generate put(U?)Int(8|16|32) member methods
+(() => {
+    const members: [string, number, number][] = [
+        ['putUInt8', 0x00, 0xff],
+        ['putInt8', -0x80, 0x7f],
+        ['putUInt16', 0x0000, 0xffff],
+        ['putInt16', -0x8000, 0x7fff],
+        ['putUInt32', 0x00000000, 0xffffffff],
+        ['putInt32', -0x80000000, 0x7fffffff],
+    ];
+
+    members.forEach(([name, lower, upper]) => {
+        let fn = function (data: number) {
+            checkInt(data, lower, upper);
+            this._acc.push([TYPE_INT8, data]);
+            this._messageLength += length;
+        };
+
+        Object.defineProperty(fn, 'name', { value: `MessageWriter.${name}` });
+        MessageWriter.prototype[name] = fn;
+    });
+})();
+
+// Dynamically generate packet methods
 (() => {
     function apply(name: string, fn: Function) {
         MessageWriter.prototype['add' + name] = fn;
@@ -186,14 +236,11 @@ interface MessageWriter {
 
     function debugApply(name: string) {
         const packetFn: Function = packets[name];
-        const paramNames = packetFn.toString().match(/^[^(]+\(([^)]*)/)[1].split(', ');
+        const m = packetFn.toString().match(/^[^(]+\(([^)]+)/);
+        const paramNames = m ? m[1].split(', ') : [];
 
         apply(name, function debugProxy() {
-            const args = paramNames.map((name, idx) => {
-                const arg = util.inspect(arguments[idx], <any>{ depth: 1, maxArrayLength: 3 });
-                return ` ${name}=${arg}`;
-            }).join('');
-
+            const args = paramNames.map((name, idx) => ` ${name}=${inspect(arguments[idx])}`).join('');
             debug('<<<', `Packet$${name}${args}`);
             packetFn.apply(this, arguments);
         });

@@ -8,7 +8,6 @@
   "main": "index.js",
   "dependencies": {
     "benchmark": "^2.1.0",
-    "pg": "^4.5.6",
-    "source-map-support": "^0.4.0"
+    "pg": "^6.0.1"
   }
 }

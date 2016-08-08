@@ -1,71 +1,18 @@
+/*!
+ * Copyright 2015 The node-postgres Developers.
+ *
+ * Licensed under the Apache License, Version 2.0, <LICENSE-APACHE or
+ * http://apache.org/licenses/LICENSE-2.0> or the MIT license <LICENSE-MIT or
+ * http://opensource.org/licenses/MIT>, at your option. This file may not be
+ * copied, modified, or distributed except according to those terms.
+ */
+
 import * as Bluebird from 'bluebird';
 import Connection from './Connection';
+import ConnectionConfig from './ConnectionConfig'
 import MessageWriter from './MessageWriter';
 import Result from './Result';
-
-type SettleFn = (val: any) => void;
-
-export abstract class Query<T> {
-    public results: Result[];
-
-    protected _resolve: SettleFn | null;
-    protected _reject: SettleFn | null;
-
-    public constructor() {
-        this.results = [];
-        this._resolve = null;
-        this._reject = null;
-    }
-
-    public promise(): Bluebird<any> {
-        return new Bluebird<any>((resolve, reject) => {
-            this._resolve = resolve;
-            this._reject = reject;
-        });
-    }
-
-    public abstract resolve(): void;
-
-    public reject(err: any) {
-        this._settle(this._reject, err);
-    }
-
-    protected _settle(fn: SettleFn | null, val: any) {
-        if (fn) {
-            fn(val);
-            this._resolve = null;
-            this._reject = null;
-        }
-    }
-}
-
-export class StartupQuery extends Query<void> {
-    public constructor(conn: Connection) {
-        super();
-
-        const msg = new MessageWriter();
-        msg.addStartupMessage(conn.options);
-        conn._send(msg, this);
-    }
-
-    public resolve() {
-        this._settle(this._resolve, undefined);
-    }
-}
-
-export class SimpleQuery extends Query<Result[]> {
-    public constructor(conn: Connection, text: string) {
-        super();
-
-        const msg = new MessageWriter();
-        msg.addQuery(text);
-        conn._send(msg, this);
-    }
-
-    public resolve() {
-        this._settle(this._resolve, this.results);
-    }
-}
+import { typeOf } from './TypeWriters';
 
 export interface QueryOptions {
     text: string;
@@ -81,9 +28,67 @@ export interface ExtendedQueryOptions extends QueryOptions {
     name: string;
 }
 
+export interface QueryWithData<T> {
+    data: Buffer,
+    query: Query<T>,
+}
+
+export abstract class Query<T> {
+    public results: Result[];
+    public promise: Bluebird<T>;
+    public reject: (err: any) => void;
+
+    protected _resolve: (val: T) => void;
+
+    public constructor() {
+        this.results = [];
+
+        this.promise = new Bluebird<T>((resolve, reject) => {
+            this._resolve = resolve;
+            this.reject = reject;
+        });
+    }
+
+    public abstract resolve(): void;
+}
+
+export class StartupQuery extends Query<void> {
+    public static create(opts: ConnectionConfig): QueryWithData<void> {
+        const msg = new MessageWriter();
+        msg.addStartupMessage(opts);
+
+        return {
+            data: msg.finish(),
+            query: new StartupQuery(),
+        };
+    }
+
+    public resolve() {
+        this._resolve(undefined);
+    }
+}
+
+export class SimpleQuery extends Query<Result[]> {
+    public static create(text: string): QueryWithData<Result[]> {
+        const msg = new MessageWriter();
+        msg.addQuery(text);
+
+        return {
+            data: msg.finish(),
+            query: new SimpleQuery(),
+        };
+    }
+
+    public resolve() {
+        this._resolve(this.results);
+    }
+}
+
 export class ExtendedQuery extends Query<Result> {
-    public constructor(conn: Connection, opts: ExtendedQueryOptions) {
-        super();
+    public static create(opts: ExtendedQueryOptions): QueryWithData<Result> {
+        for (let i = opts.types.length; i < opts.values.length; i++) {
+            opts.types.push(typeOf(opts.values[i]));
+        }
 
         const msg = new MessageWriter();
         msg.addParse(opts);
@@ -92,10 +97,14 @@ export class ExtendedQuery extends Query<Result> {
         msg.addExecute(opts.name);
         msg.addClose(opts.name, true);
         msg.addSync();
-        conn._send(msg, this);
+
+        return {
+            data: msg.finish(),
+            query: new ExtendedQuery(),
+        };
     }
 
     public resolve() {
-        this._settle(this._resolve, this.results[0]);
+        this._resolve(this.results[0]);
     }
 }

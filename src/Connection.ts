@@ -1,8 +1,16 @@
+/*!
+ * Copyright 2015 The node-postgres Developers.
+ *
+ * Licensed under the Apache License, Version 2.0, <LICENSE-APACHE or
+ * http://apache.org/licenses/LICENSE-2.0> or the MIT license <LICENSE-MIT or
+ * http://opensource.org/licenses/MIT>, at your option. This file may not be
+ * copied, modified, or distributed except according to those terms.
+ */
+
 import * as Bluebird from 'bluebird';
 import * as Deque from 'double-ended-queue';
 import * as QueryTypes from './QueryTypes';
 import * as net from 'net';
-import * as util from 'util';
 import BufferAggregator from './BufferAggregator';
 import ConnectionState from './ConnectionState';
 import Field from './Field';
@@ -11,9 +19,10 @@ import MessageWriter from './MessageWriter';
 import Result from './Result';
 import TransactionState from './TransactionState';
 import debug from './debug';
-import {EventEmitter} from 'events';
-import {default as ConnectionConfig, Options} from './ConnectionConfig';
-import {default as parsers, Parser} from './parsers';
+import { EventEmitter } from 'events';
+import { default as ConnectionConfig, Options } from './ConnectionConfig';
+import { default as parsers, Parser } from './parsers';
+import { inspect } from 'util';
 
 import './TypeAssert';
 
@@ -26,53 +35,54 @@ const HEADER_SIZE = 5; // type [Byte1] + size [Int32]
  *  since they basically act as an extension to it.
  */
 export default class Connection extends EventEmitter {
+    // Public members
     options: ConnectionConfig;
 
+    // Messaging queues and states
+    _aggregator: BufferAggregator;
+    _currentResult: Result | null;
+    _queue: Deque<QueryTypes.Query<any>>;
+
+    // Connection information
+    _serverParameters: { [key: string]: string };
+    _serverProcessId: number;
+    _serverSecretKey: number;
+
+    // Connection state
     _currentParser: Parser;
     _currentParserLength: number;
     _needsHeader: boolean;
     _state: ConnectionState;
     _transactionState: number;
 
-    _serverParameters: { [key: string]: string };
-    _serverProcessId: number;
-    _serverSecretKey: number;
-
-    _aggregator: BufferAggregator;
-    _currentResult: Result | null;
-    _queue: Deque<QueryTypes.Query<any>>;
-
+    // Networking members
     _connectTimeout: NodeJS.Timer | null;
     _socket: net.Socket;
 
     constructor(opts: string | Options) {
         super();
 
-        // Public members
         this.options = Object.freeze(new ConnectionConfig(opts));
 
-        // Connection state
-        this._currentParser = parsers.Header;
-        this._currentParserLength = HEADER_SIZE;
-        this._needsHeader = true;
-        this._state = ConnectionState.Connecting;
-        this._transactionState = TransactionState.Idle;
-
-        // Connection information
-        this._serverParameters = {};
-        this._serverProcessId = -1;
-        this._serverSecretKey = -1;
-
-        // Messaging queues and states
         this._aggregator = new BufferAggregator();
         this._currentResult = null;
         this._queue = new Deque<QueryTypes.Query<any>>();
+
+        this._serverParameters = {};
+        this._serverProcessId = -1;
+        this._serverSecretKey = -1;
 
         this._connectTimeout = setTimeout(() => {
             this._connectTimeout = null;
             this.emit('timeout');
             this._error(new Error('timeout'));
         }, this.options.connectTimeout);
+
+        this._currentParser = parsers.Header;
+        this._currentParserLength = HEADER_SIZE;
+        this._needsHeader = true;
+        this._state = ConnectionState.Connecting;
+        this._transactionState = TransactionState.Idle;
 
         // Networking members
         this._socket = net.connect(this.options as any);
@@ -83,15 +93,15 @@ export default class Connection extends EventEmitter {
         });
 
         // Initiate the connection by sending the startup message
-        const query = new QueryTypes.StartupQuery(this);
-        query.promise().then(() => {
-            clearTimeout(<any>this._connectTimeout);
+        this._sendQuery(QueryTypes.StartupQuery.create(this.options))
+            .then(() => {
+                clearTimeout(<any>this._connectTimeout);
 
-            this._state = ConnectionState.Connected;
-            this._connectTimeout = null;
+                this._state = ConnectionState.Connected;
+                this._connectTimeout = null;
 
-            this.emit('connect');
-        });
+                this.emit('connect');
+            });
     }
 
     destroy(): Bluebird<void> {
@@ -118,7 +128,7 @@ export default class Connection extends EventEmitter {
 
                 const msg = new MessageWriter();
                 msg.addTerminate();
-                this._send(msg);
+                this._send(msg.finish());
             }
 
             this._socket.once('close', resolve);
@@ -148,21 +158,19 @@ export default class Connection extends EventEmitter {
             name: arg1.name || '',
         };
 
-        debug.enabled && debug(`Connection#query(${util.inspect(opts, <any>{ depth: 1, maxArrayLength: 3 })})`);
+        debug.enabled && debug('###', `Connection#query(${inspect(opts)})`);
 
         if (opts.name === '' && opts.values.length === 0) {
             return this.queryText(opts.text).then(results => results[0]);
         } else {
-            const query = new QueryTypes.ExtendedQuery(this, opts);
-            return query.promise();
+            return this._sendQuery(QueryTypes.ExtendedQuery.create(opts));
         }
     }
 
     queryText(text: string): Bluebird<Result[]> {
         debug.enabled && debug(`Connection#queryText(${text})`);
 
-        const query = new QueryTypes.SimpleQuery(this, text);
-        return query.promise();
+        return this._sendQuery(QueryTypes.SimpleQuery.create(text));
     }
 
     _throwQueueMismatch(): QueryTypes.Query<any> {
@@ -191,44 +199,48 @@ export default class Connection extends EventEmitter {
         this._currentResult = result;
     }
 
-    _send(msg: MessageWriter, query?: QueryTypes.Query<any>) {
-        this._socket.write(msg.finish());
+    _send(data: Buffer) {
+        this._socket.write(data);
+    }
 
-        if (query) {
-            this._queue.push(query);
-        }
+    _sendQuery<T>(bundle: QueryTypes.QueryWithData<T>): Bluebird<T> {
+        this._socket.write(bundle.data);
+        this._queue.push(bundle.query);
+        return bundle.query.promise;
     }
 
     _recv(data: Buffer) {
         this._aggregator.push(data);
 
-        if (this._aggregator.length >= this._currentParserLength) {
-            const aggregate = this._aggregator.joinAndClear();
-            const aggregateReader = new MessageReader(aggregate);
+        if (this._aggregator.length < this._currentParserLength) {
+            return;
+        }
 
-            do {
-                const needsHeader = this._needsHeader;
-                const parser = this._currentParser;
-                const length = this._currentParserLength;
-                const reader = aggregateReader.getReader(length);
+        const aggregate = this._aggregator.joinAndClear();
+        const aggregateReader = new MessageReader(aggregate);
 
-                const err = this._recv_catch(parser, reader);
+        do {
+            const needsHeader = this._needsHeader;
+            const parser = this._currentParser;
+            const length = this._currentParserLength;
+            const reader = aggregateReader.getReader(length);
 
-                if (err) {
-                    this._error(err);
-                    return;
-                }
+            const err = this._recv_catch(parser, reader);
 
-                if (!needsHeader) {
-                    this._needsHeader = true;
-                    this._currentParser = parsers.Header;
-                    this._currentParserLength = HEADER_SIZE;
-                }
-            } while (aggregateReader.remaining >= this._currentParserLength);
-
-            if (aggregateReader.remaining > 0) {
-                this._aggregator.push(aggregateReader.getRemaining());
+            if (err) {
+                this._error(err);
+                return;
             }
+
+            if (!needsHeader) {
+                this._needsHeader = true;
+                this._currentParser = parsers.Header;
+                this._currentParserLength = HEADER_SIZE;
+            }
+        } while (aggregateReader.remaining >= this._currentParserLength);
+
+        if (aggregateReader.remaining > 0) {
+            this._aggregator.push(aggregateReader.getRemaining());
         }
     }
 

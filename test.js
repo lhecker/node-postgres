@@ -3,14 +3,16 @@
 require('source-map-support/register');
 
 const Bluebird = require('bluebird');
+const postgres = require('./lib');
 
 Bluebird.resolve()
-    .then(() => Bluebird.using(Connection.connect({
-        user    : 'postgres',
-        password: 'qyce-zhju',
-        database: 'fieldfucker',
+    .then(() => {
+        console.time('postgres');
+    })
+    .then(() => Bluebird.using(postgres.connect({
+        database: 'lhecker',
     }), conn => {
-        return conn.query(query, args);
+        return conn.query(`SELECT * FROM generate_series(1, $1)`, [3]);
     }))
     .then(() => {
         console.timeEnd('postgres');

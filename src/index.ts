@@ -1,6 +1,6 @@
 import * as Bluebird from 'bluebird';
 import Connection from './Connection';
-import {Options} from './ConnectionConfig';
+import { Options } from './ConnectionConfig';
 
 export function connect(opts: string | Options): Bluebird.Disposer<Connection> {
     let conn: Connection;

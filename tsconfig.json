@@ -1,17 +1,17 @@
 {
-    "compileOnSave": true,
     "compilerOptions": {
         "outDir": "lib",
         "target": "es6",
         "module": "commonjs",
         "newLine": "lf",
         "inlineSourceMap": true,
-        "noImplicitAny": true
+        "moduleResolution": "node",
+        "noImplicitAny": true,
+        "strictNullChecks": true
     },
     "filesGlob": [
         "typings/index.d.ts",
-        "src/**/*.ts",
-        "!node_modules/**"
+        "src/**/*.ts"
     ],
     "files": [
         "typings/index.d.ts",

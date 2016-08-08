@@ -2,7 +2,6 @@
   "name": "postgres",
   "version": "0.0.1",
   "description": "A fast and modern PostgreSQL client in pure JavaScript",
-  "main": "lib/index.js",
   "keywords": [
     "postgresql",
     "postgre",
@@ -18,11 +17,25 @@
   "author": "Leonard Hecker <leonard@hecker.io>",
   "license": "MIT",
   "dependencies": {
-    "bluebird": "^3.4.0",
+    "bluebird": "^3.4.1",
     "debug": "^2.2.0",
     "double-ended-queue": "^2.1.0-0"
   },
+  "devDependencies": {
+    "chai": "^3.5.0",
+    "mocha": "^3.0.2"
+  },
   "engines": {
     "node": ">=6.0.0"
-  }
+  },
+  "files": [
+    "LICENSE-APACHE",
+    "LICENSE-MIT",
+    "README.md",
+    "lib/"
+  ],
+  "scripts": {
+    "test": "mocha --reporter spec --bail --check-leaks ./test"
+  },
+  "main": "lib/index.js"
 }

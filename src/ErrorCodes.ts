@@ -1,10 +1,19 @@
+/*!
+ * Copyright 2015 The node-postgres Developers.
+ *
+ * Licensed under the Apache License, Version 2.0, <LICENSE-APACHE or
+ * http://apache.org/licenses/LICENSE-2.0> or the MIT license <LICENSE-MIT or
+ * http://opensource.org/licenses/MIT>, at your option. This file may not be
+ * copied, modified, or distributed except according to those terms.
+ */
+
 // Source: http://www.postgresql.org/docs/devel/static/errcodes-appendix.html
 
 export default {
-// Class 00 — Successful Completion
+    // Class 00 — Successful Completion
     '00000': 'successful_completion',
 
-// Class 01 — Warning
+    // Class 01 — Warning
     '01000': 'warning',
     '0100C': 'dynamic_result_sets_returned',
     '01008': 'implicit_zero_bit_padding',
@@ -14,14 +23,14 @@ export default {
     '01004': 'string_data_right_truncation',
     '01P01': 'deprecated_feature',
 
-// Class 02 — No Data (this is also a warning class per the SQL standard)
+    // Class 02 — No Data (this is also a warning class per the SQL standard)
     '02000': 'no_data',
     '02001': 'no_additional_dynamic_result_sets_returned',
 
-// Class 03 — SQL Statement Not Yet Complete
+    // Class 03 — SQL Statement Not Yet Complete
     '03000': 'sql_statement_not_yet_complete',
 
-// Class 08 — Connection Exception
+    // Class 08 — Connection Exception
     '08000': 'connection_exception',
     '08003': 'connection_does_not_exist',
     '08006': 'connection_failure',
@@ -30,37 +39,37 @@ export default {
     '08007': 'transaction_resolution_unknown',
     '08P01': 'protocol_violation',
 
-// Class 09 — Triggered Action Exception
+    // Class 09 — Triggered Action Exception
     '09000': 'triggered_action_exception',
 
-// Class 0A — Feature Not Supported
+    // Class 0A — Feature Not Supported
     '0A000': 'feature_not_supported',
 
-// Class 0B — Invalid Transaction Initiation
+    // Class 0B — Invalid Transaction Initiation
     '0B000': 'invalid_transaction_initiation',
 
-// Class 0F — Locator Exception
+    // Class 0F — Locator Exception
     '0F000': 'locator_exception',
     '0F001': 'invalid_locator_specification',
 
-// Class 0L — Invalid Grantor
+    // Class 0L — Invalid Grantor
     '0L000': 'invalid_grantor',
     '0LP01': 'invalid_grant_operation',
 
-// Class 0P — Invalid Role Specification
+    // Class 0P — Invalid Role Specification
     '0P000': 'invalid_role_specification',
 
-// Class 0Z — Diagnostics Exception
+    // Class 0Z — Diagnostics Exception
     '0Z000': 'diagnostics_exception',
     '0Z002': 'stacked_diagnostics_accessed_without_active_handler',
 
-// Class 20 — Case Not Found
+    // Class 20 — Case Not Found
     '20000': 'case_not_found',
 
-// Class 21 — Cardinality Violation
+    // Class 21 — Cardinality Violation
     '21000': 'cardinality_violation',
 
-// Class 22 — Data Exception
+    // Class 22 — Data Exception
     '22000': 'data_exception',
     '2202E': 'array_subscript_error',
     '22021': 'character_not_in_repertoire',
@@ -111,7 +120,7 @@ export default {
     '2200S': 'invalid_xml_comment',
     '2200T': 'invalid_xml_processing_instruction',
 
-// Class 23 — Integrity Constraint Violation
+    // Class 23 — Integrity Constraint Violation
     '23000': 'integrity_constraint_violation',
     '23001': 'restrict_violation',
     '23502': 'not_null_violation',
@@ -120,10 +129,10 @@ export default {
     '23514': 'check_violation',
     '23P01': 'exclusion_violation',
 
-// Class 24 — Invalid Cursor State
+    // Class 24 — Invalid Cursor State
     '24000': 'invalid_cursor_state',
 
-// Class 25 — Invalid Transaction State
+    // Class 25 — Invalid Transaction State
     '25000': 'invalid_transaction_state',
     '25001': 'active_sql_transaction',
     '25002': 'branch_transaction_already_active',
@@ -136,41 +145,41 @@ export default {
     '25P01': 'no_active_sql_transaction',
     '25P02': 'in_failed_sql_transaction',
 
-// Class 26 — Invalid SQL Statement Name
+    // Class 26 — Invalid SQL Statement Name
     '26000': 'invalid_sql_statement_name',
 
-// Class 27 — Triggered Data Change Violation
+    // Class 27 — Triggered Data Change Violation
     '27000': 'triggered_data_change_violation',
 
-// Class 28 — Invalid Authorization Specification
+    // Class 28 — Invalid Authorization Specification
     '28000': 'invalid_authorization_specification',
     '28P01': 'invalid_password',
 
-// Class 2B — Dependent Privilege Descriptors Still Exist
+    // Class 2B — Dependent Privilege Descriptors Still Exist
     '2B000': 'dependent_privilege_descriptors_still_exist',
     '2BP01': 'dependent_objects_still_exist',
 
-// Class 2D — Invalid Transaction Termination
+    // Class 2D — Invalid Transaction Termination
     '2D000': 'invalid_transaction_termination',
 
-// Class 2F — SQL Routine Exception
+    // Class 2F — SQL Routine Exception
     '2F000': 'sql_routine_exception',
     '2F005': 'function_executed_no_return_statement',
     '2F002': 'modifying_sql_data_not_permitted',
     '2F003': 'prohibited_sql_statement_attempted',
     '2F004': 'reading_sql_data_not_permitted',
 
-// Class 34 — Invalid Cursor Name
+    // Class 34 — Invalid Cursor Name
     '34000': 'invalid_cursor_name',
 
-// Class 38 — External Routine Exception
+    // Class 38 — External Routine Exception
     '38000': 'external_routine_exception',
     '38001': 'containing_sql_not_permitted',
     '38002': 'modifying_sql_data_not_permitted',
     '38003': 'prohibited_sql_statement_attempted',
     '38004': 'reading_sql_data_not_permitted',
 
-// Class 39 — External Routine Invocation Exception
+    // Class 39 — External Routine Invocation Exception
     '39000': 'external_routine_invocation_exception',
     '39001': 'invalid_sqlstate_returned',
     '39004': 'null_value_not_allowed',
@@ -178,24 +187,24 @@ export default {
     '39P02': 'srf_protocol_violated',
     '39P03': 'event_trigger_protocol_violated',
 
-// Class 3B — Savepoint Exception
+    // Class 3B — Savepoint Exception
     '3B000': 'savepoint_exception',
     '3B001': 'invalid_savepoint_specification',
 
-// Class 3D — Invalid Catalog Name
+    // Class 3D — Invalid Catalog Name
     '3D000': 'invalid_catalog_name',
 
-// Class 3F — Invalid Schema Name
+    // Class 3F — Invalid Schema Name
     '3F000': 'invalid_schema_name',
 
-// Class 40 — Transaction Rollback
+    // Class 40 — Transaction Rollback
     '40000': 'transaction_rollback',
     '40002': 'transaction_integrity_constraint_violation',
     '40001': 'serialization_failure',
     '40003': 'statement_completion_unknown',
     '40P01': 'deadlock_detected',
 
-// Class 42 — Syntax Error or Access Rule Violation
+    // Class 42 — Syntax Error or Access Rule Violation
     '42000': 'syntax_error_or_access_rule_violation',
     '42601': 'syntax_error',
     '42501': 'insufficient_privilege',
@@ -240,29 +249,29 @@ export default {
     '42P16': 'invalid_table_definition',
     '42P17': 'invalid_object_definition',
 
-// Class 44 — WITH CHECK OPTION Violation
+    // Class 44 — WITH CHECK OPTION Violation
     '44000': 'with_check_option_violation',
 
-// Class 53 — Insufficient Resources
+    // Class 53 — Insufficient Resources
     '53000': 'insufficient_resources',
     '53100': 'disk_full',
     '53200': 'out_of_memory',
     '53300': 'too_many_connections',
     '53400': 'configuration_limit_exceeded',
 
-// Class 54 — Program Limit Exceeded
+    // Class 54 — Program Limit Exceeded
     '54000': 'program_limit_exceeded',
     '54001': 'statement_too_complex',
     '54011': 'too_many_columns',
     '54023': 'too_many_arguments',
 
-// Class 55 — Object Not In Prerequisite State
+    // Class 55 — Object Not In Prerequisite State
     '55000': 'object_not_in_prerequisite_state',
     '55006': 'object_in_use',
     '55P02': 'cant_change_runtime_param',
     '55P03': 'lock_not_available',
 
-// Class 57 — Operator Intervention
+    // Class 57 — Operator Intervention
     '57000': 'operator_intervention',
     '57014': 'query_canceled',
     '57P01': 'admin_shutdown',
@@ -270,17 +279,17 @@ export default {
     '57P03': 'cannot_connect_now',
     '57P04': 'database_dropped',
 
-// Class 58 — System Error (errors external to PostgreSQL itself)
+    // Class 58 — System Error (errors external to PostgreSQL itself)
     '58000': 'system_error',
     '58030': 'io_error',
     '58P01': 'undefined_file',
     '58P02': 'duplicate_file',
 
-// Class F0 — Configuration File Error
+    // Class F0 — Configuration File Error
     'F0000': 'config_file_error',
     'F0001': 'lock_file_exists',
 
-// Class HV — Foreign Data Wrapper Error (SQL/MED)
+    // Class HV — Foreign Data Wrapper Error (SQL/MED)
     'HV000': 'fdw_error',
     'HV005': 'fdw_column_name_not_found',
     'HV002': 'fdw_dynamic_parameter_value_needed',
@@ -309,14 +318,14 @@ export default {
     'HV00M': 'fdw_unable_to_create_reply',
     'HV00N': 'fdw_unable_to_establish_connection',
 
-// Class P0 — PL/pgSQL Error
+    // Class P0 — PL/pgSQL Error
     'P0000': 'plpgsql_error',
     'P0001': 'raise_exception',
     'P0002': 'no_data_found',
     'P0003': 'too_many_rows',
     'P0004': 'assert_failure',
 
-// Class XX — Internal Error
+    // Class XX — Internal Error
     'XX000': 'internal_error',
     'XX001': 'data_corrupted',
     'XX002': 'index_corrupted',

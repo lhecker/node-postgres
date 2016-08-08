@@ -1,3 +1,12 @@
+/*!
+ * Copyright 2015 The node-postgres Developers.
+ *
+ * Licensed under the Apache License, Version 2.0, <LICENSE-APACHE or
+ * http://apache.org/licenses/LICENSE-2.0> or the MIT license <LICENSE-MIT or
+ * http://opensource.org/licenses/MIT>, at your option. This file may not be
+ * copied, modified, or distributed except according to those terms.
+ */
+
 import ConnectionConfig from '../ConnectionConfig';
 import MessageWriter from '../MessageWriter';
 
@@ -6,10 +15,8 @@ export default function Packet$StartupMessage(this: MessageWriter, config: Conne
 
     this.putInt32(196608);
 
-    if (config.user) {
-        this.putCString('user');
-        this.putCString(config.user);
-    }
+    this.putCString('user');
+    this.putCString(config.user);
 
     if (config.database) {
         this.putCString('database');

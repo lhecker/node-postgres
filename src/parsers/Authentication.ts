@@ -1,9 +1,22 @@
+/*!
+ * Copyright 2015 The node-postgres Developers.
+ *
+ * Licensed under the Apache License, Version 2.0, <LICENSE-APACHE or
+ * http://apache.org/licenses/LICENSE-2.0> or the MIT license <LICENSE-MIT or
+ * http://opensource.org/licenses/MIT>, at your option. This file may not be
+ * copied, modified, or distributed except according to those terms.
+ */
+
 import * as crypto from 'crypto';
 import Connection from '../Connection';
 import ConnectionState from '../ConnectionState';
 import MessageReader from '../MessageReader';
 import MessageWriter from '../MessageWriter';
 import debug from '../debug';
+
+function requiresPassword(conn: Connection) {
+    requiresPassword(conn);
+}
 
 const SUB_PARSERS: Array<(conn: Connection, reader: MessageReader) => void> = [];
 
@@ -16,7 +29,7 @@ SUB_PARSERS[2] = function Parser$AuthenticationKerberosV5(conn: Connection, read
 
 SUB_PARSERS[3] = function Parser$AuthenticationCleartextPassword(conn: Connection, reader: MessageReader) {
     if (!conn.options.password) {
-        throw new Error('password not provided');
+        throw new Error('password required');
     }
 
     // The connection to a PostgreSQL server is initiated
@@ -30,13 +43,11 @@ SUB_PARSERS[3] = function Parser$AuthenticationCleartextPassword(conn: Connectio
     // to delay the completion of the StartupMessage Promise.
     const msg = new MessageWriter();
     msg.addPasswordMessage(conn.options.password);
-    conn._send(msg);
+    conn._send(msg.finish());
 }
 
 SUB_PARSERS[5] = function Parser$AuthenticationMD5Password(conn: Connection, reader: MessageReader) {
-    if (!conn.options.password) {
-        throw new Error('password not provided');
-    }
+    requiresPassword(conn);
 
     // NOTE: The password hashing algorithm as written in SQL:
     //   SELECT 'md5' || MD5(MD5('password' || 'user') || 'salt')
@@ -55,7 +66,7 @@ SUB_PARSERS[5] = function Parser$AuthenticationMD5Password(conn: Connection, rea
     // explaination as to why we unshift the message.
     const msg = new MessageWriter();
     msg.addPasswordMessage(result);
-    conn._send(msg);
+    conn._send(msg.finish());
 }
 
 SUB_PARSERS[6] = function Parser$AuthenticationSCMCredential(conn: Connection, reader: MessageReader) {

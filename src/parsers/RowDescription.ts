@@ -1,3 +1,12 @@
+/*!
+ * Copyright 2015 The node-postgres Developers.
+ *
+ * Licensed under the Apache License, Version 2.0, <LICENSE-APACHE or
+ * http://apache.org/licenses/LICENSE-2.0> or the MIT license <LICENSE-MIT or
+ * http://opensource.org/licenses/MIT>, at your option. This file may not be
+ * copied, modified, or distributed except according to those terms.
+ */
+
 import Connection from '../Connection';
 import Field from '../Field';
 import MessageReader from '../MessageReader';
@@ -23,7 +32,11 @@ export default function Parser$RowDescription(conn: Connection, reader: MessageR
         };
 
         fields[i] = field;
-        debug.enabled && debug('---', `Parser$RowDescription ${Object.keys(field).map(key => `${key}=${field[key]}`)}`);
+
+        if (debug.enabled) {
+            const props = Object.keys(field).map(key => `${key}=${field[key]}`).join(' ');
+            debug('---', `Parser$RowDescription field ${props}`);
+        }
     }
 
     conn._pushNewResult(fields);
