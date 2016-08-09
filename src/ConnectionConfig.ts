@@ -15,7 +15,7 @@ export interface Options {
     host?: string;
     port?: number;
 
-    user?: string;
+    username?: string;
     password?: string;
     database?: string;
 
@@ -31,7 +31,7 @@ export default class ConnectionConfig {
     public port: number | undefined;
     public connectTimeout: number;
     public maxMessageSize: number;
-    public user: string;
+    public username: string;
     public password: string | undefined;
     public database: string | undefined;
 
@@ -53,7 +53,7 @@ export default class ConnectionConfig {
         this._copy(options, 'connectTimeout', 'number', 10000); // 10 seconds
         this._copy(options, 'maxMessageSize', 'number', 10 * 1024 * 1024); // 10 MiB
 
-        this._copy(options, 'user', 'string', () => process.env.LOGNAME || require('os').userInfo().username);
+        this._copy(options, 'username', 'string', () => process.env.LOGNAME || require('os').userInfo().username);
         this._copy(options, 'password', 'string', undefined);
         this._copy(options, 'database', 'string', undefined);
     }
@@ -93,7 +93,7 @@ export default class ConnectionConfig {
             host: undefined,
             port: undefined,
 
-            user: undefined,
+            username: undefined,
             password: undefined,
             database: undefined,
 
@@ -131,9 +131,15 @@ export default class ConnectionConfig {
         }
 
         if (uriObj.auth) {
-            const m = /^[^:]+$/
+            const m = uriObj.auth.match(/^([^:]+)(?::(.+))?$/);
 
-            options.port = port;
+            if (m && m[1]) {
+                options.username = decodeURIComponent(m[1]);
+
+                if (m[2]) {
+                    options.password = decodeURIComponent(m[2]);
+                }
+            }
         }
 
         if (uriObj.pathname) {

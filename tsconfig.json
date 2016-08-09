@@ -1,13 +1,16 @@
 {
     "compilerOptions": {
-        "outDir": "lib",
-        "target": "es6",
-        "module": "commonjs",
-        "newLine": "lf",
         "inlineSourceMap": true,
+        "lib": [
+            "es6"
+        ],
+        "module": "commonjs",
         "moduleResolution": "node",
+        "newLine": "lf",
         "noImplicitAny": true,
-        "strictNullChecks": true
+        "outDir": "lib",
+        "strictNullChecks": true,
+        "target": "es6"
     },
     "filesGlob": [
         "typings/index.d.ts",
@@ -85,7 +88,6 @@
         "placeOpenBraceOnNewLineForControlBlocks": false
     },
     "atom": {
-        "formatOnSave": true,
         "rewriteTsconfig": true
     }
 }

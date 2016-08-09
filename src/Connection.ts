@@ -199,7 +199,7 @@ export default class Connection extends EventEmitter {
         this._currentResult = result;
     }
 
-    _send(data: Buffer) {
+    _send(data: Buffer[]) {
         this._socket.write(data);
     }
 

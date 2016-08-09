@@ -34,7 +34,7 @@ export default class BufferAggregator {
             this._buffers = [Buffer.concat(this._buffers, this._totalSize)];
         }
 
-        return this._buffers[0] || new Buffer(0);
+        return this._buffers[0] || Buffer.allocUnsafe(0);
     }
 
     joinAndClear(): Buffer {

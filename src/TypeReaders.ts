@@ -20,7 +20,7 @@ function TypeReader$bool$binary(reader: MessageReader): boolean {
 
 function TypeReader$bytea$text(reader: MessageReader): Buffer {
     // The text representation of bytea starts with \x ---> slice it out
-    return new Buffer(reader.advance(2).getString('ascii'), 'hex');
+    return Buffer.from(reader.advance(2).getString('ascii'), 'hex');
 }
 
 function TypeReader$bytea$binary(reader: MessageReader): Buffer {

@@ -54,7 +54,7 @@ SUB_PARSERS[5] = function Parser$AuthenticationMD5Password(conn: Connection, rea
     const salt = reader.getBytes(4);
 
     const innerHash = crypto.createHash('md5');
-    innerHash.update(conn.options.password + conn.options.user);
+    innerHash.update(conn.options.password + conn.options.username);
 
     const outerHash = crypto.createHash('md5');
     outerHash.update(innerHash.digest('hex'))

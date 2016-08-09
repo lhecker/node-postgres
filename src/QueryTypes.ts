@@ -29,7 +29,7 @@ export interface ExtendedQueryOptions extends QueryOptions {
 }
 
 export interface QueryWithData<T> {
-    data: Buffer,
+    data: Buffer[],
     query: Query<T>,
 }
 

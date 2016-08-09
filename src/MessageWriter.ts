@@ -13,25 +13,29 @@ import debug from './debug';
 import { ExtendedQueryOptions } from './QueryTypes';
 import { inspect } from 'util';
 
-function checkInt(val: any, lo: number, hi: number) {
-    if (typeof val !== 'number' || val < lo || val > hi) {
-        throw new TypeError('value is out of bounds');
-    }
+function TYPE_UINT8(buffer: Buffer, offset: number, data: number)  { buffer.writeUInt8(data, offset, true);    return 1;           }
+function TYPE_INT8(buffer: Buffer, offset: number, data: number)   { buffer.writeInt8(data, offset, true);     return 1;           }
+function TYPE_UINT16(buffer: Buffer, offset: number, data: number) { buffer.writeUInt16BE(data, offset, true); return 2;           }
+function TYPE_INT16(buffer: Buffer, offset: number, data: number)  { buffer.writeInt16BE(data, offset, true);  return 2;           }
+function TYPE_UINT32(buffer: Buffer, offset: number, data: number) { buffer.writeUInt32BE(data, offset, true); return 4;           }
+function TYPE_INT32(buffer: Buffer, offset: number, data: number)  { buffer.writeInt32BE(data, offset, true);  return 4;           }
+function TYPE_FLOAT(buffer: Buffer, offset: number, data: number)  { buffer.writeFloatBE(data, offset, true);  return 4;           }
+function TYPE_DOUBLE(buffer: Buffer, offset: number, data: number) { buffer.writeDoubleBE(data, offset, true); return 8;           }
+function TYPE_BUFFER(buffer: Buffer, offset: number, data: Buffer) { (data as Buffer).copy(buffer, offset);    return data.length; }
+
+type TypeOp = (buffer: Buffer, offset: number, data: any) => number;
+
+interface AccData {
+    op: TypeOp;
+    data: number | string | Buffer;
 }
 
-const TYPE_UINT8: TypeOp = (buffer, offset, data) => void buffer.writeUInt8(data as number, offset, true);
-const TYPE_INT8: TypeOp = (buffer, offset, data) => void buffer.writeInt8(data as number, offset, true);
-const TYPE_UINT16: TypeOp = (buffer, offset, data) => void buffer.writeUInt16BE(data as number, offset, true);
-const TYPE_INT16: TypeOp = (buffer, offset, data) => void buffer.writeInt16BE(data as number, offset, true);
-const TYPE_UINT32: TypeOp = (buffer, offset, data) => void buffer.writeUInt32BE(data as number, offset, true);
-const TYPE_INT32: TypeOp = (buffer, offset, data) => void buffer.writeInt32BE(data as number, offset, true);
-const TYPE_FLOAT: TypeOp = (buffer, offset, data) => void buffer.writeFloatBE(data as number, offset, true);
-const TYPE_DOUBLE: TypeOp = (buffer, offset, data) => void buffer.writeDoubleBE(data as number, offset, true);
-const TYPE_BUFFER: TypeOp = (buffer, offset, data) => void (data as Buffer).copy(buffer, offset);
+interface AccChunk {
+    acc: AccData[];
+    size: number;
+}
 
-type TypeOp = (buffer: Buffer, offset: number, data: any) => void;
-type AccData = [TypeOp, number | string | Buffer];
-type ChunkData = Buffer | [AccData[], number];
+type ChunkData = Buffer | AccChunk;
 
 class MessageWriter {
     private _chunks: ChunkData[];
@@ -53,7 +57,7 @@ class MessageWriter {
     private _messageLengthField: null | AccData;
 
     public static createHeaderOnlyBuffer(type: string) {
-        return new Buffer([type.charCodeAt(0), 0x00, 0x00, 0x00, 0x04]);
+        return Buffer.from([type.charCodeAt(0), 0x00, 0x00, 0x00, 0x04]);
     }
 
     public constructor() {
@@ -68,7 +72,6 @@ class MessageWriter {
 
             // Since the type field is NOT counted towards
             // the message length we have to trick a bit.
-            this._accSize++;
             this._messageLength = 0;
         }
 
@@ -88,7 +91,7 @@ class MessageWriter {
             const chunk = buffers[i];
 
             if (!(chunk instanceof Buffer)) {
-                buffers[i] = MessageWriter._accToBuff(chunk[0], chunk[1]);
+                buffers[i] = accChunkToBuffer(chunk);
             }
         }
 
@@ -96,12 +99,14 @@ class MessageWriter {
     }
 
     public putFloat(data: number) {
-        this._acc.push([TYPE_FLOAT, data]);
+        this._acc.push({ op: TYPE_FLOAT, data });
+        this._accSize += 4;
         this._messageLength += 4;
     }
 
     public putDouble(data: number) {
-        this._acc.push([TYPE_DOUBLE, data]);
+        this._acc.push({ op: TYPE_DOUBLE, data });
+        this._accSize += 8;
         this._messageLength += 8;
     }
 
@@ -114,6 +119,8 @@ class MessageWriter {
             data = Buffer.from(data, 'utf8');
         }
 
+        const length = data.length;
+
         if (sizePrefix) {
             this.putInt32(length);
         }
@@ -122,11 +129,12 @@ class MessageWriter {
         // Testing showed that copying buffers with sizes between 0
         // and 1024 bytes is almost always of similar performance,
         // while dropping off sharply starting at sizes of 2048 bytes.
-        if (data.length > 1024) {
+        if (length > 1024) {
             this._flushAcc();
             this._chunks.push(data);
         } else {
-            this._acc.push([TYPE_BUFFER, data]);
+            this._acc.push({ op: TYPE_BUFFER, data });
+            this._accSize += length;
         }
 
         this._messageLength += length;
@@ -147,33 +155,39 @@ class MessageWriter {
 
     private _endPacket() {
         const length = this._messageLength;
+        const field = this._messageLengthField;
 
-        if (length > 0) {
-            this._messageLengthField![1] = length;
-            this._accSize += length;
-            this._messageLength = 0;
+        if (field) {
+            field.data = length;
         }
+
+        this._messageLength = 0;
     }
 
     private _flushAcc() {
         if (this._accSize > 0) {
-            this._chunks.push([this._acc, this._accSize]);
+            this._chunks.push({ acc: this._acc, size: this._accSize });
             this._acc = [];
             this._accSize = 0;
         }
     }
+}
 
-    private static _accToBuff(acc: AccData[], accSize: number): Buffer {
-        const buffer = (<any>Buffer).allocUnsafe(accSize);
-        let offset = 0;
-
-        for (let chunk of acc) {
-            chunk[0](buffer, offset, chunk[1]);
-            offset += length;
-        }
-
-        return buffer;
+function checkInt(val: any, lo: number, hi: number) {
+    if (typeof val !== 'number' || val < lo || val > hi) {
+        throw new TypeError('value is out of bounds');
     }
+}
+
+function accChunkToBuffer(accChunk: AccChunk): Buffer {
+    const buffer = Buffer.allocUnsafe(accChunk.size);
+    let offset = 0;
+
+    for (let chunk of accChunk.acc) {
+        offset += chunk.op(buffer, offset, chunk.data);
+    }
+
+    return buffer;
 }
 
 interface MessageWriter {
@@ -203,19 +217,20 @@ interface MessageWriter {
 
 // Dynamically generate put(U?)Int(8|16|32) member methods
 (() => {
-    const members: [string, number, number][] = [
-        ['putUInt8', 0x00, 0xff],
-        ['putInt8', -0x80, 0x7f],
-        ['putUInt16', 0x0000, 0xffff],
-        ['putInt16', -0x8000, 0x7fff],
-        ['putUInt32', 0x00000000, 0xffffffff],
-        ['putInt32', -0x80000000, 0x7fffffff],
+    const members: [string, TypeOp, number, number, number][] = [
+        ['putUInt8',  TYPE_UINT8,  1,  0x00,       0xff      ],
+        ['putInt8',   TYPE_INT8,   1, -0x80,       0x7f      ],
+        ['putUInt16', TYPE_UINT16, 2,  0x0000,     0xffff    ],
+        ['putInt16',  TYPE_INT16,  2, -0x8000,     0x7fff    ],
+        ['putUInt32', TYPE_UINT32, 4,  0x00000000, 0xffffffff],
+        ['putInt32',  TYPE_INT32,  4, -0x80000000, 0x7fffffff],
     ];
 
-    members.forEach(([name, lower, upper]) => {
+    members.forEach(([name, op, length, lower, upper]) => {
         let fn = function (data: number) {
             checkInt(data, lower, upper);
-            this._acc.push([TYPE_INT8, data]);
+            this._acc.push({ op, data });
+            this._accSize += length;
             this._messageLength += length;
         };
 
@@ -240,8 +255,13 @@ interface MessageWriter {
         const paramNames = m ? m[1].split(', ') : [];
 
         apply(name, function debugProxy() {
-            const args = paramNames.map((name, idx) => ` ${name}=${inspect(arguments[idx])}`).join('');
-            debug('<<<', `Packet$${name}${args}`);
+            const args = paramNames
+                .map((name, idx) => {
+                    return ' ' + name + '=' + inspect(arguments[idx]);
+                })
+                .join('');
+
+            debug('<<<', 'Packet$' + name + args);
             packetFn.apply(this, arguments);
         });
     }

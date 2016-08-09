@@ -16,7 +16,7 @@ export default function Packet$StartupMessage(this: MessageWriter, config: Conne
     this.putInt32(196608);
 
     this.putCString('user');
-    this.putCString(config.user);
+    this.putCString(config.username);
 
     if (config.database) {
         this.putCString('database');

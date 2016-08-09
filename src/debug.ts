@@ -8,7 +8,7 @@
  */
 
 export interface Debugger {
-    (message: any, ...args: any[]): void;
+    (arg1: any, ...args: any[]): void;
     enabled: boolean;
     namespace: string;
 }
