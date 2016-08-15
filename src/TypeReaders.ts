@@ -57,165 +57,166 @@ function TypeReader$float8$binary(reader: MessageReader): number {
 }
 
 function TypeReader$timestamp$text(reader: MessageReader): Date {
-    // postgres formats timestamp as '2015-09-24 19:03:07.626'
     return new Date(reader.getString('ascii'));
 }
 
 function TypeReader$timestamp$binary(reader: MessageReader): Date {
-    /*
-     * - Since JavaScript does not support 64 Bit integers we must use it's doubles.
-     * - We must discard the µsecs since JavaScript's uses msecs.
-     * - We do not use MessageReader's getInt64() method since we can improve the precision a
-     *   thousandfold by applying the divisor on the 32 MSB directly instead of doing it later on.
-     * - Finally shift from 2000-01-01 (PostgreSQL's date base value) to 1970-01-01 (JavaScript's base date value).
-     */
-    return new Date((reader.getInt32() * 4294967.296) + (reader.getUInt32() / 1000) + 946684800000);
+    const date = TypeReader$timestamptz$binary(reader);
+    date.setTime(date.getTime() + date.getTimezoneOffset() * 60000);
+    return date;
 }
 
 function TypeReader$timestamptz$text(reader: MessageReader): Date {
+    // postgres formats timestamp as '2015-01-01 15:16:17.567891+02'
     return new Date(reader.getString('ascii'));
 }
 
 function TypeReader$timestamptz$binary(reader: MessageReader): Date {
-    // same as for timestamp
+    // - Since JavaScript does not support 64 Bit integers we must use it's doubles.
+    // - We must discard the µsecs since JavaScript's uses msecs.
+    // - We do not use MessageReader's getInt64() method since we can improve the precision a
+    //   thousandfold by applying the divisor on the 32 MSB directly instead of doing it later on.
+    // - Finally shift from 2000-01-01 (PostgreSQL's date base value) to 1970-01-01 (JavaScript's base date value).
     return new Date((reader.getInt32() * 4294967.296) + (reader.getUInt32() / 1000) + 946684800000);
 }
 
 type TypeReader = (reader: MessageReader) => any;
 type TypeReaderTuple = [TypeReader, TypeReader];
 
-export const DEFAULT: TypeReaderTuple = [TypeReader$text$universal, TypeReader$text$universal];
+export const DEFAULT: TypeReaderTuple = [TypeReader$text$universal, TypeReader$bytea$binary];
 export const types: TypeReaderTuple[] = [];
 
-types[16]   /* bool           */ = [TypeReader$bool$text, TypeReader$bool$binary];
-types[17]   /* bytea          */ = [TypeReader$bytea$text, TypeReader$bytea$binary];
-types[18]   /* char           */ = [TypeReader$text$universal, TypeReader$text$universal];
-types[19]   /* name           */ = DEFAULT;
-types[20]   /* int8           */ = [TypeReader$number$text, TypeReader$int8$binary];
-types[21]   /* int2           */ = [TypeReader$number$text, TypeReader$int2$binary];
-types[22]   /* int2vector     */ = DEFAULT;
-types[23]   /* int4           */ = [TypeReader$number$text, TypeReader$int4$binary];
-types[24]   /* regproc        */ = DEFAULT;
-types[25]   /* text           */ = [TypeReader$text$universal, TypeReader$text$universal];
-types[26]   /* oid            */ = [TypeReader$number$text, TypeReader$int4$binary];
-types[27]   /* tid            */ = DEFAULT;
-types[28]   /* xid            */ = DEFAULT;
-types[29]   /* cid            */ = DEFAULT;
-types[30]   /* oidvector      */ = DEFAULT;
-types[114]  /* json           */ = DEFAULT;
-types[142]  /* xml            */ = DEFAULT;
-types[143]  /* _xml           */ = DEFAULT;
-types[199]  /* _json          */ = DEFAULT;
-types[600]  /* point          */ = DEFAULT;
-types[601]  /* lseg           */ = DEFAULT;
-types[602]  /* path           */ = DEFAULT;
-types[603]  /* box            */ = DEFAULT;
-types[604]  /* polygon        */ = DEFAULT;
-types[628]  /* line           */ = DEFAULT;
-types[629]  /* _line          */ = DEFAULT;
-types[650]  /* cidr           */ = DEFAULT;
-types[651]  /* _cidr          */ = DEFAULT;
-types[700]  /* float4         */ = [TypeReader$number$text, TypeReader$float4$binary];
-types[701]  /* float8         */ = [TypeReader$number$text, TypeReader$float8$binary];
-types[702]  /* abstime        */ = DEFAULT;
-types[703]  /* reltime        */ = DEFAULT;
-types[704]  /* tinterval      */ = DEFAULT;
-types[705]  /* unknown        */ = DEFAULT;
-types[718]  /* circle         */ = DEFAULT;
-types[719]  /* _circle        */ = DEFAULT;
-types[790]  /* money          */ = DEFAULT;
-types[791]  /* _money         */ = DEFAULT;
-types[829]  /* macaddr        */ = DEFAULT;
-types[869]  /* inet           */ = DEFAULT;
-types[1000] /* _bool          */ = DEFAULT;
-types[1001] /* _bytea         */ = DEFAULT;
-types[1002] /* _char          */ = DEFAULT;
-types[1003] /* _name          */ = DEFAULT;
-types[1005] /* _int2          */ = DEFAULT;
-types[1006] /* _int2vector    */ = DEFAULT;
-types[1007] /* _int4          */ = DEFAULT;
-types[1008] /* _regproc       */ = DEFAULT;
-types[1009] /* _text          */ = DEFAULT;
-types[1010] /* _tid           */ = DEFAULT;
-types[1011] /* _xid           */ = DEFAULT;
-types[1012] /* _cid           */ = DEFAULT;
-types[1013] /* _oidvector     */ = DEFAULT;
-types[1014] /* _bpchar        */ = DEFAULT;
-types[1015] /* _varchar       */ = DEFAULT;
-types[1016] /* _int8          */ = DEFAULT;
-types[1017] /* _point         */ = DEFAULT;
-types[1018] /* _lseg          */ = DEFAULT;
-types[1019] /* _path          */ = DEFAULT;
-types[1020] /* _box           */ = DEFAULT;
-types[1021] /* _float4        */ = DEFAULT;
-types[1022] /* _float8        */ = DEFAULT;
-types[1023] /* _abstime       */ = DEFAULT;
-types[1024] /* _reltime       */ = DEFAULT;
-types[1025] /* _tinterval     */ = DEFAULT;
-types[1027] /* _polygon       */ = DEFAULT;
-types[1028] /* _oid           */ = DEFAULT;
-types[1034] /* _aclitem       */ = DEFAULT;
-types[1040] /* _macaddr       */ = DEFAULT;
-types[1041] /* _inet          */ = DEFAULT;
-types[1042] /* bpchar         */ = [TypeReader$text$universal, TypeReader$text$universal];
-types[1043] /* varchar        */ = [TypeReader$text$universal, TypeReader$text$universal];
-types[1082] /* date           */ = [TypeReader$timestamp$text, TypeReader$timestamp$binary];
-types[1083] /* time           */ = [TypeReader$timestamp$text, TypeReader$timestamp$binary];
-types[1114] /* timestamp      */ = [TypeReader$timestamp$text, TypeReader$timestamp$binary];
-types[1115] /* _timestamp     */ = DEFAULT;
-types[1182] /* _date          */ = DEFAULT;
-types[1183] /* _time          */ = DEFAULT;
+const ND: TypeReaderTuple = DEFAULT;
+
+types[  16] /* bool           */ = [TypeReader$bool$text,        TypeReader$bool$binary       ];
+types[  17] /* bytea          */ = [TypeReader$bytea$text,       TypeReader$bytea$binary      ];
+types[  18] /* char           */ = [TypeReader$text$universal,   TypeReader$text$universal    ];
+types[  19] /* name           */ = ND;
+types[  20] /* int8           */ = [TypeReader$number$text,      TypeReader$int8$binary       ];
+types[  21] /* int2           */ = [TypeReader$number$text,      TypeReader$int2$binary       ];
+types[  22] /* int2vector     */ = ND;
+types[  23] /* int4           */ = [TypeReader$number$text,      TypeReader$int4$binary       ];
+types[  24] /* regproc        */ = ND;
+types[  25] /* text           */ = [TypeReader$text$universal,   TypeReader$text$universal    ];
+types[  26] /* oid            */ = [TypeReader$number$text,      TypeReader$int4$binary       ];
+types[  27] /* tid            */ = ND;
+types[  28] /* xid            */ = ND;
+types[  29] /* cid            */ = ND;
+types[  30] /* oidvector      */ = ND;
+types[ 114] /* json           */ = ND;
+types[ 142] /* xml            */ = ND;
+types[ 143] /* _xml           */ = ND;
+types[ 199] /* _json          */ = ND;
+types[ 600] /* point          */ = ND;
+types[ 601] /* lseg           */ = ND;
+types[ 602] /* path           */ = ND;
+types[ 603] /* box            */ = ND;
+types[ 604] /* polygon        */ = ND;
+types[ 628] /* line           */ = ND;
+types[ 629] /* _line          */ = ND;
+types[ 650] /* cidr           */ = ND;
+types[ 651] /* _cidr          */ = ND;
+types[ 700] /* float4         */ = [TypeReader$number$text,      TypeReader$float4$binary     ];
+types[ 701] /* float8         */ = [TypeReader$number$text,      TypeReader$float8$binary     ];
+types[ 702] /* abstime        */ = ND;
+types[ 703] /* reltime        */ = ND;
+types[ 704] /* tinterval      */ = ND;
+types[ 705] /* unknown        */ = ND;
+types[ 718] /* circle         */ = ND;
+types[ 719] /* _circle        */ = ND;
+types[ 790] /* money          */ = ND;
+types[ 791] /* _money         */ = ND;
+types[ 829] /* macaddr        */ = ND;
+types[ 869] /* inet           */ = ND;
+types[1000] /* _bool          */ = ND;
+types[1001] /* _bytea         */ = ND;
+types[1002] /* _char          */ = ND;
+types[1003] /* _name          */ = ND;
+types[1005] /* _int2          */ = ND;
+types[1006] /* _int2vector    */ = ND;
+types[1007] /* _int4          */ = ND;
+types[1008] /* _regproc       */ = ND;
+types[1009] /* _text          */ = ND;
+types[1010] /* _tid           */ = ND;
+types[1011] /* _xid           */ = ND;
+types[1012] /* _cid           */ = ND;
+types[1013] /* _oidvector     */ = ND;
+types[1014] /* _bpchar        */ = ND;
+types[1015] /* _varchar       */ = ND;
+types[1016] /* _int8          */ = ND;
+types[1017] /* _point         */ = ND;
+types[1018] /* _lseg          */ = ND;
+types[1019] /* _path          */ = ND;
+types[1020] /* _box           */ = ND;
+types[1021] /* _float4        */ = ND;
+types[1022] /* _float8        */ = ND;
+types[1023] /* _abstime       */ = ND;
+types[1024] /* _reltime       */ = ND;
+types[1025] /* _tinterval     */ = ND;
+types[1027] /* _polygon       */ = ND;
+types[1028] /* _oid           */ = ND;
+types[1034] /* _aclitem       */ = ND;
+types[1040] /* _macaddr       */ = ND;
+types[1041] /* _inet          */ = ND;
+types[1042] /* bpchar         */ = [TypeReader$text$universal,   TypeReader$text$universal    ];
+types[1043] /* varchar        */ = [TypeReader$text$universal,   TypeReader$text$universal    ];
+types[1082] /* date           */ = [TypeReader$timestamp$text,   TypeReader$timestamp$binary  ];
+types[1083] /* time           */ = [TypeReader$timestamp$text,   TypeReader$timestamp$binary  ];
+types[1114] /* timestamp      */ = [TypeReader$timestamp$text,   TypeReader$timestamp$binary  ];
+types[1115] /* _timestamp     */ = ND;
+types[1182] /* _date          */ = ND;
+types[1183] /* _time          */ = ND;
 types[1184] /* timestamptz    */ = [TypeReader$timestamptz$text, TypeReader$timestamptz$binary];
-types[1185] /* _timestamptz   */ = DEFAULT;
-types[1186] /* interval       */ = DEFAULT;
-types[1187] /* _interval      */ = DEFAULT;
-types[1231] /* _numeric       */ = DEFAULT;
-types[1263] /* _cstring       */ = DEFAULT;
+types[1185] /* _timestamptz   */ = ND;
+types[1186] /* interval       */ = ND;
+types[1187] /* _interval      */ = ND;
+types[1231] /* _numeric       */ = ND;
+types[1263] /* _cstring       */ = ND;
 types[1266] /* timetz         */ = [TypeReader$timestamptz$text, TypeReader$timestamptz$binary];
-types[1270] /* _timetz        */ = DEFAULT;
-types[1560] /* bit            */ = DEFAULT;
-types[1561] /* _bit           */ = DEFAULT;
-types[1562] /* varbit         */ = DEFAULT;
-types[1563] /* _varbit        */ = DEFAULT;
-types[1700] /* numeric        */ = DEFAULT;
-types[1790] /* refcursor      */ = DEFAULT;
-types[2201] /* _refcursor     */ = DEFAULT;
-types[2202] /* regprocedure   */ = DEFAULT;
-types[2203] /* regoper        */ = DEFAULT;
-types[2204] /* regoperator    */ = DEFAULT;
-types[2205] /* regclass       */ = DEFAULT;
-types[2206] /* regtype        */ = DEFAULT;
-types[2207] /* _regprocedure  */ = DEFAULT;
-types[2208] /* _regoper       */ = DEFAULT;
-types[2209] /* _regoperator   */ = DEFAULT;
-types[2210] /* _regclass      */ = DEFAULT;
-types[2211] /* _regtype       */ = DEFAULT;
-types[2949] /* _txid_snapshot */ = DEFAULT;
-types[2950] /* uuid           */ = DEFAULT;
-types[2951] /* _uuid          */ = DEFAULT;
-types[2970] /* txid_snapshot  */ = DEFAULT;
-types[3220] /* pg_lsn         */ = DEFAULT;
-types[3221] /* _pg_lsn        */ = DEFAULT;
-types[3614] /* tsvector       */ = DEFAULT;
-types[3615] /* tsquery        */ = DEFAULT;
-types[3643] /* _tsvector      */ = DEFAULT;
-types[3644] /* _gtsvector     */ = DEFAULT;
-types[3645] /* _tsquery       */ = DEFAULT;
-types[3734] /* regconfig      */ = DEFAULT;
-types[3735] /* _regconfig     */ = DEFAULT;
-types[3769] /* regdictionary  */ = DEFAULT;
-types[3770] /* _regdictionary */ = DEFAULT;
-types[3802] /* jsonb          */ = DEFAULT;
-types[3807] /* _jsonb         */ = DEFAULT;
-types[3904] /* int4range      */ = DEFAULT;
-types[3905] /* _int4range     */ = DEFAULT;
-types[3906] /* numrange       */ = DEFAULT;
-types[3907] /* _numrange      */ = DEFAULT;
-types[3908] /* tsrange        */ = DEFAULT;
-types[3909] /* _tsrange       */ = DEFAULT;
-types[3910] /* tstzrange      */ = DEFAULT;
-types[3911] /* _tstzrange     */ = DEFAULT;
-types[3912] /* daterange      */ = DEFAULT;
-types[3913] /* _daterange     */ = DEFAULT;
-types[3926] /* int8range      */ = DEFAULT;
-types[3927] /* _int8range     */ = DEFAULT;
+types[1270] /* _timetz        */ = ND;
+types[1560] /* bit            */ = ND;
+types[1561] /* _bit           */ = ND;
+types[1562] /* varbit         */ = ND;
+types[1563] /* _varbit        */ = ND;
+types[1700] /* numeric        */ = ND;
+types[1790] /* refcursor      */ = ND;
+types[2201] /* _refcursor     */ = ND;
+types[2202] /* regprocedure   */ = ND;
+types[2203] /* regoper        */ = ND;
+types[2204] /* regoperator    */ = ND;
+types[2205] /* regclass       */ = ND;
+types[2206] /* regtype        */ = ND;
+types[2207] /* _regprocedure  */ = ND;
+types[2208] /* _regoper       */ = ND;
+types[2209] /* _regoperator   */ = ND;
+types[2210] /* _regclass      */ = ND;
+types[2211] /* _regtype       */ = ND;
+types[2949] /* _txid_snapshot */ = ND;
+types[2950] /* uuid           */ = ND;
+types[2951] /* _uuid          */ = ND;
+types[2970] /* txid_snapshot  */ = ND;
+types[3220] /* pg_lsn         */ = ND;
+types[3221] /* _pg_lsn        */ = ND;
+types[3614] /* tsvector       */ = ND;
+types[3615] /* tsquery        */ = ND;
+types[3643] /* _tsvector      */ = ND;
+types[3644] /* _gtsvector     */ = ND;
+types[3645] /* _tsquery       */ = ND;
+types[3734] /* regconfig      */ = ND;
+types[3735] /* _regconfig     */ = ND;
+types[3769] /* regdictionary  */ = ND;
+types[3770] /* _regdictionary */ = ND;
+types[3802] /* jsonb          */ = ND;
+types[3807] /* _jsonb         */ = ND;
+types[3904] /* int4range      */ = ND;
+types[3905] /* _int4range     */ = ND;
+types[3906] /* numrange       */ = ND;
+types[3907] /* _numrange      */ = ND;
+types[3908] /* tsrange        */ = ND;
+types[3909] /* _tsrange       */ = ND;
+types[3910] /* tstzrange      */ = ND;
+types[3911] /* _tstzrange     */ = ND;
+types[3912] /* daterange      */ = ND;
+types[3913] /* _daterange     */ = ND;
+types[3926] /* int8range      */ = ND;
+types[3927] /* _int8range     */ = ND;

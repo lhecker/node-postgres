@@ -6,6 +6,7 @@
  * http://opensource.org/licenses/MIT>, at your option. This file may not be
  * copied, modified, or distributed except according to those terms.
  */
+import objectEntries from './Object.entries';
 
 export const uint8 = new Array(256);
 
@@ -29,7 +30,6 @@ const perIdentifier = {
     R: 'routine',
 };
 
-for (let key in perIdentifier) {
-    const name = perIdentifier[key];
-    uint8[key.charCodeAt(0)] = name;
+for (let [key, value] of objectEntries(perIdentifier)) {
+    uint8[key.charCodeAt(0)] = value;
 }

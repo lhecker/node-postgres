@@ -86,8 +86,13 @@ export class SimpleQuery extends Query<Result[]> {
 
 export class ExtendedQuery extends Query<Result> {
     public static create(opts: ExtendedQueryOptions): QueryWithData<Result> {
-        for (let i = opts.types.length; i < opts.values.length; i++) {
-            opts.types.push(typeOf(opts.values[i]));
+        const valuesLength = opts.values.length;
+        let typeIdx = opts.types.length;
+
+        opts.types.length = valuesLength;
+
+        for (; typeIdx < valuesLength; typeIdx++) {
+            opts.types[typeIdx] = typeOf(opts.values[typeIdx]);
         }
 
         const msg = new MessageWriter();

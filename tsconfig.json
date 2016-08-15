@@ -1,23 +1,33 @@
 {
     "compilerOptions": {
-        "inlineSourceMap": true,
+        "outDir": "lib",
+        "target": "es6",
         "lib": [
-            "es6"
+            "es2017"
+        ],
+        "types": [
+            "node"
         ],
         "module": "commonjs",
         "moduleResolution": "node",
+        "jsx": "Preserve",
         "newLine": "lf",
+        "emitDecoratorMetadata": true,
+        "experimentalDecorators": true,
+        "forceConsistentCasingInFileNames": true,
+        "inlineSourceMap": true,
         "noImplicitAny": true,
-        "outDir": "lib",
+        "noImplicitThis": true,
+        "noImplicitUseStrict": false,
+        "preserveConstEnums": false,
+        "removeComments": true,
         "strictNullChecks": true,
-        "target": "es6"
+        "suppressImplicitAnyIndexErrors": true
     },
     "filesGlob": [
-        "typings/index.d.ts",
         "src/**/*.ts"
     ],
     "files": [
-        "typings/index.d.ts",
         "src/BufferAggregator.ts",
         "src/Connection.ts",
         "src/ConnectionConfig.ts",
@@ -29,6 +39,7 @@
         "src/index.ts",
         "src/MessageReader.ts",
         "src/MessageWriter.ts",
+        "src/Object.entries.ts",
         "src/packets/Bind.ts",
         "src/packets/Close.ts",
         "src/packets/CopyData.ts",

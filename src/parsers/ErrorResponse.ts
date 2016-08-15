@@ -27,7 +27,7 @@ export default function Parser$ErrorResponse(conn: Connection, reader: MessageRe
             error[key] = value;
         }
 
-        debug.enabled && debug('---', `Parser$ErrorResponse ${String.fromCharCode(type)}='${value}'`);
+        debug.enabled && debug('--- Parser$ErrorResponse %o=%o', String.fromCharCode(type), value);
     } while (reader.remaining > 1);
 
     if (query) {

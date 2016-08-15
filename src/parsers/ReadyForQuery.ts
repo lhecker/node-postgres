@@ -23,5 +23,5 @@ export default function Parser$ReadyForQuery(conn: Connection, reader: MessageRe
     conn._transactionState = status as TransactionState;
     conn._queueShift().resolve();
 
-    debug.enabled && debug('---', `Parser$ReadyForQuery state=${TransactionState[status]}`);
+    debug.enabled && debug('--- Parser$ReadyForQuery state=%o', TransactionState[status]);
 }

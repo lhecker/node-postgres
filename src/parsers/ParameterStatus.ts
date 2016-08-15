@@ -16,7 +16,7 @@ export default function Parser$ParameterStatus(conn: Connection, reader: Message
     const name = reader.getCString();
     const value = reader.getCString();
 
-    debug.enabled && debug('---', `Parser$ParameterStatus name='${name}' value='${value}'`);
+    debug.enabled && debug('--- Parser$ParameterStatus name=%o value=%o', name, value);
 
     conn._serverParameters[name] = value;
 }

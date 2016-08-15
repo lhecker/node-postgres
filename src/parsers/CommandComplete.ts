@@ -17,5 +17,5 @@ export default function Parser$CommandComplete(conn: Connection, reader: Message
 
     conn._currentResult!.command = value;
 
-    debug.enabled && debug('---', `Parser$CommandComplete value=${value}`);
+    debug.enabled && debug('--- Parser$CommandComplete value=', value);
 }

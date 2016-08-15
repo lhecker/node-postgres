@@ -22,7 +22,6 @@ import debug from './debug';
 import { EventEmitter } from 'events';
 import { default as ConnectionConfig, Options } from './ConnectionConfig';
 import { default as parsers, Parser } from './parsers';
-import { inspect } from 'util';
 
 import './TypeAssert';
 
@@ -36,7 +35,7 @@ const HEADER_SIZE = 5; // type [Byte1] + size [Int32]
  */
 export default class Connection extends EventEmitter {
     // Public members
-    options: ConnectionConfig;
+    config: ConnectionConfig;
 
     // Messaging queues and states
     _aggregator: BufferAggregator;
@@ -62,7 +61,11 @@ export default class Connection extends EventEmitter {
     constructor(opts: string | Options) {
         super();
 
-        this.options = Object.freeze(new ConnectionConfig(opts));
+        debug.enabled && debug('Connection.constructor opts=%o', opts);
+
+        this.config = new ConnectionConfig(opts);
+        Object.freeze(this.config.options);
+        Object.freeze(this.config);
 
         this._aggregator = new BufferAggregator();
         this._currentResult = null;
@@ -76,7 +79,7 @@ export default class Connection extends EventEmitter {
             this._connectTimeout = null;
             this.emit('timeout');
             this._error(new Error('timeout'));
-        }, this.options.connectTimeout);
+        }, this.config.connectTimeout);
 
         this._currentParser = parsers.Header;
         this._currentParserLength = HEADER_SIZE;
@@ -85,7 +88,11 @@ export default class Connection extends EventEmitter {
         this._transactionState = TransactionState.Idle;
 
         // Networking members
-        this._socket = net.connect(this.options as any);
+        this._socket = net.connect({
+            path: this.config.path,
+            host: this.config.host,
+            port: this.config.port,
+        } as any);
         this._socket.on('data', this._recv.bind(this));
         this._socket.on('error', this._error.bind(this));
         this._socket.on('close', () => {
@@ -93,7 +100,7 @@ export default class Connection extends EventEmitter {
         });
 
         // Initiate the connection by sending the startup message
-        this._sendQuery(QueryTypes.StartupQuery.create(this.options))
+        this._sendQuery(QueryTypes.StartupQuery.create(this.config), true)
             .then(() => {
                 clearTimeout(<any>this._connectTimeout);
 
@@ -105,31 +112,31 @@ export default class Connection extends EventEmitter {
     }
 
     destroy(): Bluebird<void> {
-        debug.enabled && debug('Connection#destroy()');
-
-        this._state = ConnectionState.Disconnecting;
+        debug.enabled && debug('Connection.destroy');
 
         return new Bluebird<void>((resolve, reject) => {
+            this._state = ConnectionState.Disconnecting;
+
             this._socket.once('close', resolve);
             this._socket.destroy();
         });
     }
 
     end(): Bluebird<void> {
-        debug.enabled && debug('Connection#end()');
+        debug.enabled && debug('Connection.end');
 
         return new Bluebird<void>((resolve, reject) => {
             if (!this._socket.writable) {
-                return resolve(undefined);
+                return resolve();
             }
 
             if (this._state === ConnectionState.Connected) {
-                this._state = ConnectionState.Disconnecting;
-
                 const msg = new MessageWriter();
                 msg.addTerminate();
                 this._send(msg.finish());
             }
+
+            this._state = ConnectionState.Disconnecting;
 
             this._socket.once('close', resolve);
             this._socket.end();
@@ -137,12 +144,12 @@ export default class Connection extends EventEmitter {
     }
 
     pause() {
-        debug.enabled && debug('Connection#pause()');
+        debug.enabled && debug('Connection.pause');
         this._socket.pause();
     }
 
     resume() {
-        debug.enabled && debug('Connection#resume()');
+        debug.enabled && debug('Connection.resume');
         this._socket.resume();
     }
 
@@ -158,7 +165,7 @@ export default class Connection extends EventEmitter {
             name: arg1.name || '',
         };
 
-        debug.enabled && debug('###', `Connection#query(${inspect(opts)})`);
+        debug.enabled && debug('Connection.query opts=%o', opts);
 
         if (opts.name === '' && opts.values.length === 0) {
             return this.queryText(opts.text).then(results => results[0]);
@@ -168,7 +175,7 @@ export default class Connection extends EventEmitter {
     }
 
     queryText(text: string): Bluebird<Result[]> {
-        debug.enabled && debug(`Connection#queryText(${text})`);
+        debug.enabled && debug('Connection.queryText text=%o', text);
 
         return this._sendQuery(QueryTypes.SimpleQuery.create(text));
     }
@@ -200,16 +207,26 @@ export default class Connection extends EventEmitter {
     }
 
     _send(data: Buffer[]) {
-        this._socket.write(data);
+        (<any>this._socket).cork();
+
+        for (let buf of data) {
+            this._socket.write(buf);
+        }
+
+        process.nextTick(() => (<any>this._socket).uncork());
     }
 
-    _sendQuery<T>(bundle: QueryTypes.QueryWithData<T>): Bluebird<T> {
-        this._socket.write(bundle.data);
+    private _sendQuery<T>(bundle: QueryTypes.QueryWithData<T>, force?: boolean): Bluebird<T> {
+        if (!force && this._state !== ConnectionState.Connected) {
+            throw new Error('sending a query in an unconnected state');
+        }
+
         this._queue.push(bundle.query);
+        this._send(bundle.data);
         return bundle.query.promise;
     }
 
-    _recv(data: Buffer) {
+    private _recv(data: Buffer) {
         this._aggregator.push(data);
 
         if (this._aggregator.length < this._currentParserLength) {
@@ -245,7 +262,7 @@ export default class Connection extends EventEmitter {
     }
 
     // performance gain of 5% by seperating the unoptimizable try/catch
-    _recv_catch(parser: Parser, reader: MessageReader): any {
+    private _recv_catch(parser: Parser, reader: MessageReader): any {
         try {
             parser(this, reader);
         } catch (err) {
@@ -253,11 +270,13 @@ export default class Connection extends EventEmitter {
         }
     }
 
-    _error(err: any) {
+    private _error(err: any) {
         // ECONNRESET will be raised after a Terminate message has been sent
         if (this._state === ConnectionState.Disconnecting && err.code === 'ECONNRESET') {
             return;
         }
+
+        debug.enabled && debug('--- Connection._error err=%o', err);
 
         this.destroy().catch(err => void 0);
         this.emit('error', err);

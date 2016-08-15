@@ -23,9 +23,9 @@ export default function Parser$Header(conn: Connection, reader: MessageReader) {
     const size = reader.getInt32() - 4;
     const parser = parsers.uint8[type];
 
-    debug.enabled && debug('>>>', `Parser$Header type=${String.fromCharCode(type)} length=${size} parser=${parser ? parser.name : 'undefined'}`);
+    debug.enabled && debug('>>> Parser$Header type=%o length=%o parser=%o', String.fromCharCode(type), size, parser && parser.name);
 
-    if (!parser || size < 0 || size > conn.options.maxMessageSize) {
+    if (!parser || size < 0 || size > conn.config.maxMessageSize) {
         throw new Error('invalid message header');
     }
 

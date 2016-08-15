@@ -18,23 +18,14 @@ export default function Packet$Bind(this: MessageWriter, opts: ExtendedQueryOpti
     this.putCString(opts.name); // source prepared statement name
 
     this.putInt16(1); // number of parameter format codes
-    this.putInt16(0); // only text right now
-
+    this.putInt16(1); // only binary right now
 
     this.putInt16(opts.values.length); // number of parameter values
 
-    for (let value of opts.values) {
-        // TODO
-        if (typeof value === 'object') {
-            value = JSON.stringify(value);
-        } else {
-            value = String(value);
-        }
-
-        this.putBytes(value, true);
+    for (let i = 0; i < opts.values.length; i++) {
+        TypeWriters.types[opts.types[i]][1](this, opts.values[i]);
     }
 
-
     this.putInt16(1); // number of result format codes
-    this.putInt16(1); // only text right now
+    this.putInt16(1); // only binary right now
 }

@@ -9,6 +9,7 @@
 
 import ConnectionConfig from '../ConnectionConfig';
 import MessageWriter from '../MessageWriter';
+import objectEntries from '../Object.entries';
 
 export default function Packet$StartupMessage(this: MessageWriter, config: ConnectionConfig) {
     this.beginPacket();
@@ -23,11 +24,10 @@ export default function Packet$StartupMessage(this: MessageWriter, config: Conne
         this.putCString(config.database);
     }
 
-    this.putCString('client_encoding');
-    this.putCString('UTF8');
-
-    this.putCString('DateStyle');
-    this.putCString('ISO, MDY');
+    for (let [key, val] of objectEntries(config.options)) {
+        this.putCString(key);
+        this.putCString(val);
+    }
 
     this.putInt8(0);
 }

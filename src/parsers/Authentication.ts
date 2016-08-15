@@ -15,7 +15,9 @@ import MessageWriter from '../MessageWriter';
 import debug from '../debug';
 
 function requiresPassword(conn: Connection) {
-    requiresPassword(conn);
+    if (!conn.config.password) {
+        throw new Error('password required');
+    }
 }
 
 const SUB_PARSERS: Array<(conn: Connection, reader: MessageReader) => void> = [];
@@ -28,21 +30,13 @@ SUB_PARSERS[2] = function Parser$AuthenticationKerberosV5(conn: Connection, read
 }
 
 SUB_PARSERS[3] = function Parser$AuthenticationCleartextPassword(conn: Connection, reader: MessageReader) {
-    if (!conn.options.password) {
-        throw new Error('password required');
-    }
+    requiresPassword(conn);
 
-    // The connection to a PostgreSQL server is initiated
-    // using a StartupMessage and waits for it's completion.
-    // Thus at this point only a single element is in the Connection queue
-    // and it's Promise is used to signal the readyness of the connection.
-    // The server can (and usually does) reply with a Parser$Authentication
-    // message though, to which we have to send a PasswordMessage,
-    // all of which happens *before* the StartupMessage sequence is finished.
-    // Thus we unshift this message at the beginning,
-    // to delay the completion of the StartupMessage Promise.
+    // The connection to a PostgreSQL server is initiated using a StartupMessage.
+    // The completion of the StartupMessage fulfills the connect() promise.
+    // Since all of this happens before that completion we directly write to the socket here.
     const msg = new MessageWriter();
-    msg.addPasswordMessage(conn.options.password);
+    msg.addPasswordMessage(conn.config.password!);
     conn._send(msg.finish());
 }
 
@@ -54,7 +48,7 @@ SUB_PARSERS[5] = function Parser$AuthenticationMD5Password(conn: Connection, rea
     const salt = reader.getBytes(4);
 
     const innerHash = crypto.createHash('md5');
-    innerHash.update(conn.options.password + conn.options.username);
+    innerHash.update(conn.config.password + conn.config.username);
 
     const outerHash = crypto.createHash('md5');
     outerHash.update(innerHash.digest('hex'))
@@ -62,8 +56,7 @@ SUB_PARSERS[5] = function Parser$AuthenticationMD5Password(conn: Connection, rea
 
     const result = 'md5' + outerHash.digest('hex');
 
-    // See Parser$AuthenticationCleartextPassword, for a
-    // explaination as to why we unshift the message.
+    // See Parser$AuthenticationCleartextPassword.
     const msg = new MessageWriter();
     msg.addPasswordMessage(result);
     conn._send(msg.finish());
@@ -99,7 +92,7 @@ export default function Parser$Authentication(conn: Connection, reader: MessageR
         throw new Error('authentication method not implemented');
     }
 
-    debug.enabled && debug('---', `Parser$Authentication => ${subParser.name}`);
+    debug.enabled && debug('--- Parser$Authentication => %o', subParser.name);
 
     subParser(conn, reader);
 }

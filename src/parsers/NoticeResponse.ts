@@ -30,7 +30,7 @@ export default function Parser$NoticeResponse(conn: Connection, reader: MessageR
             notice[key] = value;
         }
 
-        debug.enabled && debug('---', `Parser$NoticeResponse ${String.fromCharCode(type)}='${value}'`);
+        debug.enabled && debug('--- Parser$NoticeResponse %o=%o', String.fromCharCode(type), value);
     } while (reader.remaining > 1);
 
     conn.emit('notice', notice);

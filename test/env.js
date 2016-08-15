@@ -6,6 +6,7 @@
  * http://opensource.org/licenses/MIT>, at your option. This file may not be
  * copied, modified, or distributed except according to those terms.
  */
+require('source-map-support').install();
 
 const expect = require('chai').expect;
 

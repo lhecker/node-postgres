@@ -23,26 +23,30 @@ function TYPE_FLOAT(buffer: Buffer, offset: number, data: number)  { buffer.writ
 function TYPE_DOUBLE(buffer: Buffer, offset: number, data: number) { buffer.writeDoubleBE(data, offset, true); return 8;           }
 function TYPE_BUFFER(buffer: Buffer, offset: number, data: Buffer) { (data as Buffer).copy(buffer, offset);    return data.length; }
 
-type TypeOp = (buffer: Buffer, offset: number, data: any) => number;
+// See docs for Buffer.poolSize at https://nodejs.org/api/buffer.html#buffer_class_method_buffer_allocunsafe_size
+const MAX_FAST_BUFFER_SIZE = ((<any>Buffer).poolSize || 8192) >>> 1;
 
-interface AccData {
-    op: TypeOp;
-    data: number | string | Buffer;
-}
+type TypeOp = (buffer: Buffer, offset: number, data: any) => number;
+type AccChunkData = number | string | Buffer;
 
 interface AccChunk {
-    acc: AccData[];
+    op: TypeOp;
+    data: AccChunkData;
+}
+
+interface Acc {
+    acc: AccChunk[];
     size: number;
 }
 
-type ChunkData = Buffer | AccChunk;
+type Chunk = Buffer | Acc;
 
 class MessageWriter {
-    private _chunks: ChunkData[];
+    private _chunks: Chunk[];
 
     // The main "ACCumulator". In _flushAcc() the pieces contained
     // in here will be merged into a single Buffer.
-    private _acc: AccData[];
+    private _acc: AccChunk[];
 
     // Contains the total length of all pieces in _acc.
     // This field is only updated sporadically in _endPacket().
@@ -54,7 +58,7 @@ class MessageWriter {
 
     // A backreference to the length field in the last message header.
     // This is used to retroactively set the correct message length.
-    private _messageLengthField: null | AccData;
+    private _messageLengthField: null | AccChunk;
 
     public static createHeaderOnlyBuffer(type: string) {
         return Buffer.from([type.charCodeAt(0), 0x00, 0x00, 0x00, 0x04]);
@@ -99,19 +103,20 @@ class MessageWriter {
     }
 
     public putFloat(data: number) {
-        this._acc.push({ op: TYPE_FLOAT, data });
-        this._accSize += 4;
-        this._messageLength += 4;
+        this._pushAcc(TYPE_FLOAT, data, 4);
     }
 
     public putDouble(data: number) {
-        this._acc.push({ op: TYPE_DOUBLE, data });
-        this._accSize += 8;
-        this._messageLength += 8;
+        this._pushAcc(TYPE_DOUBLE, data, 8);
     }
 
     public putChar(data: string) {
         this.putUInt8(data.charCodeAt(0));
+    }
+
+    public putCString(data: string) {
+        this.putBytes(data);
+        this.putUInt8(0);
     }
 
     public putBytes(data: string | Buffer, sizePrefix?: boolean) {
@@ -125,43 +130,43 @@ class MessageWriter {
             this.putInt32(length);
         }
 
-        // Prevent copying around large buffers
+        // Here we prevent copying around large buffers:
         // Testing showed that copying buffers with sizes between 0
         // and 1024 bytes is almost always of similar performance,
-        // while dropping off sharply starting at sizes of 2048 bytes.
-        if (length > 1024) {
-            this._flushAcc();
-            this._chunks.push(data);
+        // while dropping off sharply starting at sizes of about 2048 bytes.
+        if (length < 1024) {
+            this._pushAcc(TYPE_BUFFER, data, length);
         } else {
-            this._acc.push({ op: TYPE_BUFFER, data });
-            this._accSize += length;
+            this._pushChunk(data, length);
+        }
+    }
+
+    private _pushAcc(op: TypeOp, data: AccChunkData, length: number) {
+        // Here we prevent creating buffers larger than (Buffer.poolSize >>> 1).
+        // Allocations greater than or equal to that do not use the
+        // fast internal buffer pool. See here for more information:
+        // https://github.com/nodejs/node/blob/8f90dcc1b8e4ac3d8597ea2ee3927f325cc980d3/lib/buffer.js#L173
+        if (this._accSize + length >= MAX_FAST_BUFFER_SIZE) {
+            this._flushAcc();
         }
 
+        this._acc.push({ op, data });
+        this._accSize += length;
         this._messageLength += length;
     }
 
-    public putCString(data: string) {
-        this.putBytes(data);
-        this.putUInt8(0);
-    }
-
-    private _clear() {
-        this._chunks = [];
-        this._acc = [];
-        this._accSize = 0;
-        this._messageLength = 0;
-        this._messageLengthField = null;
+    private _pushChunk(chunk: Chunk, length: number) {
+        this._flushAcc();
+        this._chunks.push(chunk);
+        this._messageLength += length;
     }
 
     private _endPacket() {
-        const length = this._messageLength;
-        const field = this._messageLengthField;
-
-        if (field) {
-            field.data = length;
+        if (this._messageLengthField) {
+            this._messageLengthField.data = this._messageLength;
+            this._messageLengthField = null;
+            this._messageLength = 0;
         }
-
-        this._messageLength = 0;
     }
 
     private _flushAcc() {
@@ -171,15 +176,17 @@ class MessageWriter {
             this._accSize = 0;
         }
     }
-}
 
-function checkInt(val: any, lo: number, hi: number) {
-    if (typeof val !== 'number' || val < lo || val > hi) {
-        throw new TypeError('value is out of bounds');
+    private _clear() {
+        this._chunks = [];
+        this._acc = [];
+        this._accSize = 0;
+        this._messageLength = 0;
+        this._messageLengthField = null;
     }
 }
 
-function accChunkToBuffer(accChunk: AccChunk): Buffer {
+function accChunkToBuffer(accChunk: Acc): Buffer {
     const buffer = Buffer.allocUnsafe(accChunk.size);
     let offset = 0;
 
@@ -217,6 +224,12 @@ interface MessageWriter {
 
 // Dynamically generate put(U?)Int(8|16|32) member methods
 (() => {
+    function checkInt(val: any, lo: number, hi: number) {
+        if (typeof val !== 'number' || val < lo || val > hi) {
+            throw new TypeError('value is out of bounds');
+        }
+    }
+
     const members: [string, TypeOp, number, number, number][] = [
         ['putUInt8',  TYPE_UINT8,  1,  0x00,       0xff      ],
         ['putInt8',   TYPE_INT8,   1, -0x80,       0x7f      ],
@@ -227,11 +240,9 @@ interface MessageWriter {
     ];
 
     members.forEach(([name, op, length, lower, upper]) => {
-        let fn = function (data: number) {
+        const fn = function (this: any, data: number) {
             checkInt(data, lower, upper);
-            this._acc.push({ op, data });
-            this._accSize += length;
-            this._messageLength += length;
+            this._pushAcc(op, data, length);
         };
 
         Object.defineProperty(fn, 'name', { value: `MessageWriter.${name}` });
@@ -252,16 +263,25 @@ interface MessageWriter {
     function debugApply(name: string) {
         const packetFn: Function = packets[name];
         const m = packetFn.toString().match(/^[^(]+\(([^)]+)/);
-        const paramNames = m ? m[1].split(', ') : [];
+        let fmtString = '<<< Packet$' + name;
+        let paramCount = 0;
 
-        apply(name, function debugProxy() {
-            const args = paramNames
-                .map((name, idx) => {
-                    return ' ' + name + '=' + inspect(arguments[idx]);
-                })
-                .join('');
+        if (m) {
+            const paramNames = m[1].split(/,\s*/g);
+            fmtString += ' ' + paramNames.map(name => `${name}=%o`).join(' ');
+            paramCount = paramNames.length;
+        }
 
-            debug('<<<', 'Packet$' + name + args);
+        apply(name, function debugProxy(this: MessageWriter) {
+            const args = new Array(paramCount + 1);
+
+            args[0] = fmtString;
+
+            for (let i = 0; i < arguments.length; i++) {
+                args[i + 1] = arguments[i];
+            }
+
+            debug.apply(null, args);
             packetFn.apply(this, arguments);
         });
     }

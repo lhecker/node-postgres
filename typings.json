@@ -3,6 +3,6 @@
     "bluebird": "registry:npm/bluebird#3.3.4+20160802085254"
   },
   "globalDependencies": {
-    "node": "registry:dt/node#6.0.0+20160807145350"
+    "node": "registry:env/node#6.0.0+20160723033700"
   }
 }
