@@ -11,6 +11,8 @@ import * as TypeWriters from '../TypeWriters';
 import MessageWriter from '../MessageWriter';
 import { ExtendedQueryOptions } from '../QueryTypes';
 
+const FORMAT_CODE = 1; // 0 = text, 1 = binary
+
 export default function Packet$Bind(this: MessageWriter, opts: ExtendedQueryOptions) {
     this.beginPacket('B');
 
@@ -18,14 +20,23 @@ export default function Packet$Bind(this: MessageWriter, opts: ExtendedQueryOpti
     this.putCString(opts.name); // source prepared statement name
 
     this.putInt16(1); // number of parameter format codes
-    this.putInt16(1); // only binary right now
+    this.putInt16(FORMAT_CODE);
 
     this.putInt16(opts.values.length); // number of parameter values
 
     for (let i = 0; i < opts.values.length; i++) {
-        TypeWriters.types[opts.types[i]][1](this, opts.values[i]);
+        const val = opts.values[i];
+
+        if (val === null || val === undefined) {
+            this.putInt32(-1);
+        } else {
+            const field = this.putLengthField();
+            const pos = this.messageLength;
+            TypeWriters.types[opts.types[i]][FORMAT_CODE](this, opts.values[i]);
+            field.data = this.messageLength - pos;
+        }
     }
 
     this.putInt16(1); // number of result format codes
-    this.putInt16(1); // only binary right now
+    this.putInt16(FORMAT_CODE);
 }

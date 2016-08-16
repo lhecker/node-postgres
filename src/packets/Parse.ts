@@ -15,6 +15,7 @@ export default function Packet$Parse(this: MessageWriter, opts: ExtendedQueryOpt
 
     this.putCString(opts.name); // prepared statement name
     this.putCString(opts.text); // query string
+
     this.putInt16(opts.types.length); // number of parameter data types
     opts.types.forEach(this.putInt32, this); // parameter type IDs
 }

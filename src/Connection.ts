@@ -29,18 +29,18 @@ const HEADER_SIZE = 5; // type [Byte1] + size [Int32]
 
 /*
  * NOTE:
- *  Connection's methods and members cannot be declared as private,
+ *  Some of the methods and members of this class cannot be declared as private,
  *  because the parsers need to access and modify them,
  *  since they basically act as an extension to it.
  */
 export default class Connection extends EventEmitter {
-    // Public members
-    config: ConnectionConfig;
+    // Publicly exposed members
+    public config: ConnectionConfig;
 
     // Messaging queues and states
-    _aggregator: BufferAggregator;
+    private _aggregator: BufferAggregator;
+    private _queue: Deque<QueryTypes.Query<any>>;
     _currentResult: Result | null;
-    _queue: Deque<QueryTypes.Query<any>>;
 
     // Connection information
     _serverParameters: { [key: string]: string };
@@ -51,43 +51,49 @@ export default class Connection extends EventEmitter {
     _currentParser: Parser;
     _currentParserLength: number;
     _needsHeader: boolean;
-    _state: ConnectionState;
     _transactionState: number;
 
     // Networking members
-    _connectTimeout: NodeJS.Timer | null;
-    _socket: net.Socket;
+    private _connectTimeout: NodeJS.Timer | null;
+    private _disconnectQueue: (() => void)[];
+    private _socket: net.Socket;
+    private _state: ConnectionState;
 
     constructor(opts: string | Options) {
         super();
 
         debug.enabled && debug('Connection.constructor opts=%o', opts);
 
-        this.config = new ConnectionConfig(opts);
+        // Public members
+        Object.defineProperty(this, 'config', {
+            value: new ConnectionConfig(opts),
+            enumerable: true,
+        });
         Object.freeze(this.config.options);
         Object.freeze(this.config);
 
+        // Messaging queues and states
         this._aggregator = new BufferAggregator();
         this._currentResult = null;
         this._queue = new Deque<QueryTypes.Query<any>>();
 
+        // Connection information
         this._serverParameters = {};
         this._serverProcessId = -1;
         this._serverSecretKey = -1;
 
-        this._connectTimeout = setTimeout(() => {
-            this._connectTimeout = null;
-            this.emit('timeout');
-            this._error(new Error('timeout'));
-        }, this.config.connectTimeout);
-
+        // Connection state
         this._currentParser = parsers.Header;
         this._currentParserLength = HEADER_SIZE;
         this._needsHeader = true;
-        this._state = ConnectionState.Connecting;
         this._transactionState = TransactionState.Idle;
 
         // Networking members
+        this._connectTimeout = setTimeout(() => {
+            this._connectTimeout = null;
+            this._error(new Error('connection timeout'));
+        }, this.config.connectTimeout);
+
         this._socket = net.connect({
             path: this.config.path,
             host: this.config.host,
@@ -96,68 +102,28 @@ export default class Connection extends EventEmitter {
         this._socket.on('data', this._recv.bind(this));
         this._socket.on('error', this._error.bind(this));
         this._socket.on('close', () => {
-            this._state = ConnectionState.Disconnected;
+            this._setState(ConnectionState.Disconnected);
         });
+
+        this._disconnectQueue = [];
+        this._state = ConnectionState.Connecting;
 
         // Initiate the connection by sending the startup message
         this._sendQuery(QueryTypes.StartupQuery.create(this.config), true)
             .then(() => {
                 clearTimeout(<any>this._connectTimeout);
-
-                this._state = ConnectionState.Connected;
                 this._connectTimeout = null;
+
+                this._setState(ConnectionState.Connected);
 
                 this.emit('connect');
             });
     }
 
-    destroy(): Bluebird<void> {
-        debug.enabled && debug('Connection.destroy');
-
-        return new Bluebird<void>((resolve, reject) => {
-            this._state = ConnectionState.Disconnecting;
-
-            this._socket.once('close', resolve);
-            this._socket.destroy();
-        });
-    }
-
-    end(): Bluebird<void> {
-        debug.enabled && debug('Connection.end');
-
-        return new Bluebird<void>((resolve, reject) => {
-            if (!this._socket.writable) {
-                return resolve();
-            }
-
-            if (this._state === ConnectionState.Connected) {
-                const msg = new MessageWriter();
-                msg.addTerminate();
-                this._send(msg.finish());
-            }
-
-            this._state = ConnectionState.Disconnecting;
-
-            this._socket.once('close', resolve);
-            this._socket.end();
-        });
-    }
-
-    pause() {
-        debug.enabled && debug('Connection.pause');
-        this._socket.pause();
-    }
-
-    resume() {
-        debug.enabled && debug('Connection.resume');
-        this._socket.resume();
-    }
-
-    query(query: string): Bluebird<Result>;
-    query(query: string, vals: any[]): Bluebird<Result>;
-    query(opts: QueryTypes.QueryOptions): Bluebird<Result>;
-
-    query(arg1: any, arg2?: any[]): Bluebird<Result> {
+    public query(query: string): Bluebird<Result>;
+    public query(query: string, vals: any[]): Bluebird<Result>;
+    public query(opts: QueryTypes.QueryOptions): Bluebird<Result>;
+    public query(arg1: any, arg2?: any[]): Bluebird<Result> {
         const opts: QueryTypes.ExtendedQueryOptions = {
             text: typeof arg1 === 'string' ? arg1 : (arg1.text || ''),
             values: arg2 || arg1.values || [],
@@ -174,13 +140,65 @@ export default class Connection extends EventEmitter {
         }
     }
 
-    queryText(text: string): Bluebird<Result[]> {
+    public queryText(text: string): Bluebird<Result[]> {
         debug.enabled && debug('Connection.queryText text=%o', text);
 
         return this._sendQuery(QueryTypes.SimpleQuery.create(text));
     }
 
-    _throwQueueMismatch(): QueryTypes.Query<any> {
+    public end(): Bluebird<void> {
+        debug.enabled && debug('Connection.end');
+        return this._end(false);
+    }
+
+    public destroy(): Bluebird<void> {
+        debug.enabled && debug('Connection.destroy');
+        return this._end(true);
+    }
+
+    public pause() {
+        debug.enabled && debug('Connection.pause');
+        this._socket.pause();
+    }
+
+    public resume() {
+        debug.enabled && debug('Connection.resume');
+        this._socket.resume();
+    }
+
+    public get state() {
+        return this._state;
+    }
+
+    private _setState(state: ConnectionState) {
+        if (state < this.state) {
+            throw RangeError(`invalid state transition from ${ConnectionState[this.state]} to ${ConnectionState[state]}`);
+        }
+
+        if (state !== this.state) {
+            this._state = state;
+
+            switch (state) {
+                case ConnectionState.Connected:
+                    clearTimeout(<any>this._connectTimeout);
+                    this._connectTimeout = null;
+                    break;
+                case ConnectionState.Disconnected:
+                    for (let cb of this._disconnectQueue) {
+                        cb();
+                    }
+
+                    this._aggregator.clear();
+                    this._queue.clear();
+                    this._currentResult = null;
+
+                    this._disconnectQueue = [];
+                    break;
+            }
+        }
+    }
+
+    private _throwQueueMismatch(): QueryTypes.Query<any> {
         throw new Error('packet queue is empty');
     }
 
@@ -217,12 +235,13 @@ export default class Connection extends EventEmitter {
     }
 
     private _sendQuery<T>(bundle: QueryTypes.QueryWithData<T>, force?: boolean): Bluebird<T> {
-        if (!force && this._state !== ConnectionState.Connected) {
+        if (!force && this.state !== ConnectionState.Connected) {
             throw new Error('sending a query in an unconnected state');
         }
 
         this._queue.push(bundle.query);
-        this._send(bundle.data);
+        this._send(bundle.data.finish());
+
         return bundle.query.promise;
     }
 
@@ -272,7 +291,7 @@ export default class Connection extends EventEmitter {
 
     private _error(err: any) {
         // ECONNRESET will be raised after a Terminate message has been sent
-        if (this._state === ConnectionState.Disconnecting && err.code === 'ECONNRESET') {
+        if (this.state === ConnectionState.Disconnecting && err.code === 'ECONNRESET') {
             return;
         }
 
@@ -280,5 +299,32 @@ export default class Connection extends EventEmitter {
 
         this.destroy().catch(err => void 0);
         this.emit('error', err);
+    }
+
+    private _end(destroy: boolean): Bluebird<void> {
+        return new Bluebird<void>((resolve, reject) => {
+            if (this.state === ConnectionState.Disconnected) {
+                return resolve();
+            }
+
+            this._disconnectQueue.push(resolve);
+
+            if (this.state !== ConnectionState.Disconnecting) {
+                // NOTE: Only the Connecting or Connected states reach this closure
+                this._setState(ConnectionState.Disconnecting);
+
+                if (destroy) {
+                    this._socket.destroy();
+                } else {
+                    if (this.state === ConnectionState.Connected) {
+                        const msg = new MessageWriter();
+                        msg.addTerminate();
+                        this._send(msg.finish());
+                    }
+
+                    this._socket.end();
+                }
+            }
+        });
     }
 }

@@ -14,7 +14,7 @@ import MessageWriter from '../MessageWriter';
 export default function Packet$Close(this: MessageWriter, name: string, both: boolean) {
     this.beginPacket('C');
 
-    // if `portalOnly` is false the prepared statement and all it's portals are deleted
+    // Closing the 'S'tatement also closes the 'P'ortal
     this.putChar(both ? 'S' : 'P');
     this.putCString(name);
 }

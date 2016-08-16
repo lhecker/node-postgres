@@ -7,12 +7,4 @@
  * copied, modified, or distributed except according to those terms.
  */
 
-const debug = require('debug');
-
-export interface Debugger {
-    (arg1: any, ...args: any[]): void;
-    enabled: boolean;
-    namespace: string;
-}
-
-export default debug('postgres') as Debugger;
+require('source-map-support').install();

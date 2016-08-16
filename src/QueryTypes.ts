@@ -29,7 +29,7 @@ export interface ExtendedQueryOptions extends QueryOptions {
 }
 
 export interface QueryWithData<T> {
-    data: Buffer[],
+    data: MessageWriter,
     query: Query<T>,
 }
 
@@ -58,7 +58,7 @@ export class StartupQuery extends Query<void> {
         msg.addStartupMessage(opts);
 
         return {
-            data: msg.finish(),
+            data: msg,
             query: new StartupQuery(),
         };
     }
@@ -74,7 +74,7 @@ export class SimpleQuery extends Query<Result[]> {
         msg.addQuery(text);
 
         return {
-            data: msg.finish(),
+            data: msg,
             query: new SimpleQuery(),
         };
     }
@@ -104,7 +104,7 @@ export class ExtendedQuery extends Query<Result> {
         msg.addSync();
 
         return {
-            data: msg.finish(),
+            data: msg,
             query: new ExtendedQuery(),
         };
     }

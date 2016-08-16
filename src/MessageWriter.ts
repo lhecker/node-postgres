@@ -23,6 +23,12 @@ function TYPE_FLOAT(buffer: Buffer, offset: number, data: number)  { buffer.writ
 function TYPE_DOUBLE(buffer: Buffer, offset: number, data: number) { buffer.writeDoubleBE(data, offset, true); return 8;           }
 function TYPE_BUFFER(buffer: Buffer, offset: number, data: Buffer) { (data as Buffer).copy(buffer, offset);    return data.length; }
 
+function checkInt(val: any, lo: number, hi: number) {
+    if (typeof val !== 'number' || val < lo || val > hi) {
+        throw new TypeError('value is out of bounds');
+    }
+}
+
 // See docs for Buffer.poolSize at https://nodejs.org/api/buffer.html#buffer_class_method_buffer_allocunsafe_size
 const MAX_FAST_BUFFER_SIZE = ((<any>Buffer).poolSize || 8192) >>> 1;
 
@@ -68,6 +74,10 @@ class MessageWriter {
         this._clear();
     }
 
+    public get messageLength() {
+        return this._messageLength;
+    }
+
     public beginPacket(type?: string) {
         this._endPacket();
 
@@ -79,8 +89,8 @@ class MessageWriter {
             this._messageLength = 0;
         }
 
-        this.putInt32(0);
-        this._messageLengthField = this._acc[this._acc.length - 1];
+        const ret = this.putLengthField();
+        this._messageLengthField = ret;
     }
 
     public finish(): Buffer[] {
@@ -102,6 +112,11 @@ class MessageWriter {
         return buffers as Buffer[];
     }
 
+    public putLengthField(): AccChunk {
+        this._pushAcc(TYPE_INT32, 0, 4);
+        return this._acc[this._acc.length - 1];
+    }
+
     public putFloat(data: number) {
         this._pushAcc(TYPE_FLOAT, data, 4);
     }
@@ -120,15 +135,15 @@ class MessageWriter {
     }
 
     public putBytes(data: string | Buffer, sizePrefix?: boolean) {
+        if (data.length === 0) {
+            return;
+        }
+
         if (typeof data === 'string') {
             data = Buffer.from(data, 'utf8');
         }
 
         const length = data.length;
-
-        if (sizePrefix) {
-            this.putInt32(length);
-        }
 
         // Here we prevent copying around large buffers:
         // Testing showed that copying buffers with sizes between 0
@@ -222,15 +237,17 @@ interface MessageWriter {
     addTerminate(this: MessageWriter): void;
 }
 
-// Dynamically generate put(U?)Int(8|16|32) member methods
+// Dynamically add the methods listed in the interface above
 (() => {
-    function checkInt(val: any, lo: number, hi: number) {
-        if (typeof val !== 'number' || val < lo || val > hi) {
-            throw new TypeError('value is out of bounds');
-        }
+    function setProto(key: string, val: any) {
+        Object.defineProperty(MessageWriter.prototype, key, {
+            configurable: true,
+            value: val,
+            writable: true,
+        });
     }
 
-    const members: [string, TypeOp, number, number, number][] = [
+    const intMembers: [string, TypeOp, number, number, number][] = [
         ['putUInt8',  TYPE_UINT8,  1,  0x00,       0xff      ],
         ['putInt8',   TYPE_INT8,   1, -0x80,       0x7f      ],
         ['putUInt16', TYPE_UINT16, 2,  0x0000,     0xffff    ],
@@ -239,54 +256,77 @@ interface MessageWriter {
         ['putInt32',  TYPE_INT32,  4, -0x80000000, 0x7fffffff],
     ];
 
-    members.forEach(([name, op, length, lower, upper]) => {
+    intMembers.forEach(([name, op, length, lower, upper]) => {
         const fn = function (this: any, data: number) {
             checkInt(data, lower, upper);
             this._pushAcc(op, data, length);
         };
 
         Object.defineProperty(fn, 'name', { value: `MessageWriter.${name}` });
-        MessageWriter.prototype[name] = fn;
+        setProto(name, fn);
     });
-})();
 
-// Dynamically generate packet methods
-(() => {
-    function apply(name: string, fn: Function) {
-        MessageWriter.prototype['add' + name] = fn;
+    for (let name of Object.keys(packets)) {
+        setProto('add' + name, packets[name]);
     }
 
-    function prodApply(name: string) {
-        apply(name, packets[name]);
-    }
+    // Proxy and log calls to member methods in debug mode
+    if (debug.enabled) {
+        // If a put method
+        let preventLogging = false;
 
-    function debugApply(name: string) {
-        const packetFn: Function = packets[name];
-        const m = packetFn.toString().match(/^[^(]+\(([^)]+)/);
-        let fmtString = '<<< Packet$' + name;
-        let paramCount = 0;
+        const apply = function (key: string, alwaysLog: boolean) {
+            const fn = MessageWriter.prototype[key] as Function;
+            const m = fn.toString().match(/^[^(]+\(([^)]+)/);
+            let fmtString = alwaysLog ? '<<<' : '---';
+            let paramCount = 0;
 
-        if (m) {
-            const paramNames = m[1].split(/,\s*/g);
-            fmtString += ' ' + paramNames.map(name => `${name}=%o`).join(' ');
-            paramCount = paramNames.length;
-        }
+            fmtString += ' MessageWriter.' + key;
 
-        apply(name, function debugProxy(this: MessageWriter) {
-            const args = new Array(paramCount + 1);
-
-            args[0] = fmtString;
-
-            for (let i = 0; i < arguments.length; i++) {
-                args[i + 1] = arguments[i];
+            if (m) {
+                const paramNames = m[1].split(/,\s*/g);
+                fmtString += ' ' + paramNames.map(name => name + '=%o').join(' ');
+                paramCount = paramNames.length;
             }
 
-            debug.apply(null, args);
-            packetFn.apply(this, arguments);
-        });
-    }
+            setProto(key, function debugProxy(this: MessageWriter) {
+                const setPreventLogging = !alwaysLog && !preventLogging;
 
-    Object.keys(packets).forEach(debug.enabled ? debugApply : prodApply);
+                if (setPreventLogging) {
+                    preventLogging = true;
+                }
+
+                if (alwaysLog || setPreventLogging) {
+                    const args = new Array(paramCount + 1);
+
+                    args[0] = fmtString;
+
+                    for (let i = 0; i < arguments.length; i++) {
+                        args[i + 1] = arguments[i];
+                    }
+
+                    debug.apply(null, args);
+                }
+
+                const ret = fn.apply(this, arguments);
+
+                if (setPreventLogging) {
+                    preventLogging = false;
+                }
+
+                return ret;
+            });
+        }
+
+        for (let key of Object.getOwnPropertyNames(MessageWriter.prototype)) {
+            const startsWithAdd = key.startsWith('add');
+            const startsWithPut = key.startsWith('put');
+
+            if (startsWithAdd || startsWithPut) {
+                apply(key, startsWithAdd);
+            }
+        }
+    }
 })();
 
 export default MessageWriter;

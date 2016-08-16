@@ -81,7 +81,7 @@ SUB_PARSERS[9] = function Parser$AuthenticationSSPI(conn: Connection, reader: Me
 
 export const type = 'R';
 export default function Parser$Authentication(conn: Connection, reader: MessageReader) {
-    if (conn._state !== ConnectionState.Connecting) {
+    if (conn.state !== ConnectionState.Connecting) {
         throw new Error('already authenticated');
     }
 
